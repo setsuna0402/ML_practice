@@ -1,0 +1,15 @@
+# use glob syntax
+syntax: glob
+
+.DS_Store
+*.optrpt
+*.pyc
+*.hdf5
+*.npy
+*.exe
+.vscode
+*.o
+std*
+demo
+compile_private.sh
+compile_cuda_private.sh
