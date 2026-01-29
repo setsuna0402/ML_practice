@@ -2,6 +2,7 @@
 syntax: glob
 
 .DS_Store
+*.pth
 *.optrpt
 *.pyc
 *.hdf5
