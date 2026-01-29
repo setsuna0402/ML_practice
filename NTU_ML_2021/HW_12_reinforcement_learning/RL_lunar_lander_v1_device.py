@@ -1,10 +1,14 @@
 '''
 Propose:
 Train a reinforcement learning agent using the policy gradient method on the Lunar Lander environment from OpenAI Gym.
+This version uses device (gpu or MPS) for training.
 Author: Dr. Ka Hou Leong
 Date: 28/1/2026
-Verion: 0.1
+Version: 0.1
 ML library: PyTorch
+Warning: The algorithm follows the on-policy training which is not friendly for parallel training.
+         In fact, it is recommended to use vectorised environments or other techniques to improve training efficiency.
+         In this version, using GPU/MPS to train the network is much slower than using CPU to do it. (No vectoricsed env)
 '''
 import gymnasium as gym
 import numpy as np
@@ -42,15 +46,15 @@ env = gym.make("LunarLander-v3")
 fix(seed)
 # Create the agent
 network = PolicyNetwork()
-agent = PolicyGradientAgent(network, gamma=0.999)
+agent = PolicyGradientAgent(network, allow_auto_device=True)
 
 #Reset the environment to generate the first observation
 observation, info = env.reset(seed=seed)
 env.action_space.seed(seed)
 
 agent.network.train()  # agent in training mode
-EPISODE_PER_BATCH = 10  # Update the agent network every 10 episodes
-NUM_BATCH = 600        # Update the agent network for 600 times in total
+EPISODE_PER_BATCH = 10  # Update the agent network every 5 episodes
+NUM_BATCH = 800        # Update the agent network for 400 times in total
 
 avg_total_rewards, avg_final_rewards = [], []
 
@@ -130,14 +134,14 @@ env.close()
 end_time = time.time()
 print(f"Training completed in {end_time - start_time:.2f} seconds.")
 # Save agent's network weights
-agent.save("./lunar_lander_policy_gradient_agent_num_batch_{}_episodes_{}_gamma_{}.pth".format(NUM_BATCH, EPISODE_PER_BATCH, agent.gamma))
+agent.save("./lunar_lander_policy_gradient_agent_num_batch_{}_episodes_{}_MPS.pth".format(NUM_BATCH, EPISODE_PER_BATCH))
 
 plt.plot(avg_total_rewards)
 plt.xlabel("Episode")
 plt.ylabel("Average Total Reward")
 plt.title("Total Rewards")
 plt.grid()
-plt.savefig("./lunar_lander_total_rewards_num_batch_{}_episodes_{}_gamma_{}.png".format(NUM_BATCH, EPISODE_PER_BATCH, agent.gamma))
+plt.savefig("./lunar_lander_total_rewards_num_batch_{}_episodes_{}_MPS.png".format(NUM_BATCH, EPISODE_PER_BATCH))
 plt.close()
 # plt.show()
 
@@ -146,7 +150,7 @@ plt.xlabel("Episode")
 plt.ylabel("Average Final Reward")
 plt.title("Final Rewards")
 plt.grid()
-plt.savefig("./lunar_lander_final_rewards_num_batch_{}_episodes_{}_gamma_{}.png".format(NUM_BATCH, EPISODE_PER_BATCH, agent.gamma))
+plt.savefig("./lunar_lander_final_rewards_num_batch_{}_episodes_{}_MPS.png".format(NUM_BATCH, EPISODE_PER_BATCH))
 plt.close()
 # plt.show()
 
