@@ -3,7 +3,7 @@ Propose:
 Train a reinforcement learning agent using the policy gradient method on the Lunar Lander environment from OpenAI Gym.
 Author: Dr. Ka Hou Leong
 Date: 28/1/2026
-Verion: 0.1
+Version: 0.1
 ML library: PyTorch
 '''
 import gymnasium as gym
