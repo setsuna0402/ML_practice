@@ -25,9 +25,9 @@ class PolicyNetwork(nn.Module):
         self.fc3 = nn.Linear(64, action_space)
 
     def forward(self, state):
-        x = F.relu(self.fc1(state))
-        x = F.relu(self.fc2(x))
-        x = self.dropout(x)
+        x = F.tanh(self.fc1(state))
+        x = F.tanh(self.fc2(x))
+        # x = self.dropout(x)
         x = self.fc3(x) # shape [batch, 4]
         return F.softmax(x, dim=-1) #dim = -1: softmax over the last dimension
 
@@ -44,7 +44,7 @@ class ValueNetwork(nn.Module):
     def forward(self, state):
         x = F.tanh(self.fc1(state))
         x = F.tanh(self.fc2(x))
-        x = self.dropout(x)
+        # x = self.dropout(x)
         x = self.fc3(x)          # shape [batch, 1] or [1]
         return x.squeeze(-1)     # shape [batch]
 
@@ -147,7 +147,7 @@ class ActorCriticAgent(PolicyGradientAgent):
     def __init__(self, actor_network, value_network, learning_rate=0.001, gamma=0.99, allow_auto_device=False):
         super().__init__(actor_network, learning_rate, gamma, allow_auto_device)
         self.value_network = value_network
-        self.value_optimizer = optim.Adam(self.value_network.parameters(), lr=learning_rate)
+        self.value_optimizer = optim.Adam(self.value_network.parameters(), lr=0.1*learning_rate)
 
     def get_value(self, state):
         state_d = torch.as_tensor(state, dtype=torch.float32, device=self.device)
@@ -162,15 +162,20 @@ class ActorCriticAgent(PolicyGradientAgent):
         N_trajectories = len(log_probs)
         # flatten all steps from all episodes
         log_probs_flat = torch.cat([torch.stack(ep) for ep in log_probs])  # [T]
+        # flatten states
+        temp_states = [st for ep in states for st in ep]
+        temp_states = np.array(temp_states, dtype=np.float32)
         # torch tensor detach the object from the graph and prevent gradients from flowing back
-        states_flat = torch.tensor([st for ep in states for st in ep], dtype=torch.float32, device=self.device)  # [T,8]
+        states_flat = torch.from_numpy(temp_states).to(self.device)  # [T,8]
+        # states_flat = torch.tensor(temp_states, dtype=torch.float32, device=self.device)  # [T,8]
         rewards_flat = torch.tensor([g for ep in rewards for g in ep], dtype=torch.float32, device=self.device)  # [T]
 
         # critic prediction
         values_flat = self.value_network(states_flat)   # [T]
-
         # advantage (detach values_flat so actor doesn't update critic)
         advantages_flat = rewards_flat - values_flat.detach()
+        # Normalise advantages
+        advantages_flat = (advantages_flat - advantages_flat.mean()) / (advantages_flat.std() + 1e-9)
 
         # losses
         # expectation value of rewards over trajectories
@@ -187,6 +192,70 @@ class ActorCriticAgent(PolicyGradientAgent):
         self.value_optimizer.zero_grad()
         critic_loss.backward()
         self.value_optimizer.step()
+
+    def learn_actor_critic_td(self, log_probs, rewards, states, next_states, dones):
+        # This is learn function involving with value function
+        # The estimation of the value function uses temporal difference method
+        # log_probs, rewards, states, next_states, dones are all 2D lists (from all trajectories concatenated)
+        """
+        TD(0) actor-critic:
+        target = r + gamma * (1-done) * V(s_next)
+        delta  = target - V(s)
+        actor  uses delta as advantage
+        critic minimizes delta^2
+        """
+        N_trajectories = len(log_probs)
+        # flatten all steps from all episodes
+        log_probs_flat = torch.cat([torch.stack(ep) for ep in log_probs])  # [T]
+
+        # flatten states
+        temp_states = [st for ep in states for st in ep]
+        temp_states = np.array(temp_states, dtype=np.float32)
+        temp_next_states = [st for ep in next_states for st in ep]
+        temp_next_states = np.array(temp_next_states, dtype=np.float32)
+
+        # flatten dones
+        temp_dones = [d for ep in dones for d in ep]
+        temp_dones = np.array(temp_dones, dtype=np.float32) # done is bool, but we use float to match other tensors
+
+        # torch tensor detach the object from the graph and prevent gradients from flowing back
+        states_flat = torch.from_numpy(temp_states).to(self.device)  # [T,8]
+        next_states_flat = torch.from_numpy(temp_next_states).to(self.device)  # [T,8]
+        dones_flat = torch.from_numpy(temp_dones).to(self.device)  # [T]
+        rewards_flat = torch.tensor([g for ep in rewards for g in ep], dtype=torch.float32, device=self.device)  # [T]
+
+        # critic prediction
+        values_flat = self.value_network(states_flat)   # [T]
+        next_values_flat = self.value_network(next_states_flat)  # [T]
+
+        # theoretical TD target
+        with torch.no_grad():  # no gradient tracking (V(s_t+1) is the goal!! It is a constant when we optimize V(s_t))
+            reward_td = rewards_flat + self.gamma * next_values_flat * (1 - dones_flat)
+
+        # TD error
+        delta_reward = reward_td - values_flat  # [T]
+        # advantage (detach values_flat so actor doesn't update critic)
+        advantages_flat = delta_reward.detach()
+        # Normalise advantages
+        advantages_flat = (advantages_flat - advantages_flat.mean()) / (advantages_flat.std() + 1e-9)
+
+        # losses
+        # expectation value of rewards over trajectories
+        actor_loss  = -(log_probs_flat * advantages_flat).sum() / N_trajectories
+        # minimize the difference between predicted values and actual td rewards
+        # critic_loss = (delta_reward.pow(2)).sum() / N_trajectories
+        critic_loss = (delta_reward.pow(2)).mean()
+
+        # update actor
+        self.actor_optimizer.zero_grad()
+        actor_loss.backward()
+        self.actor_optimizer.step()
+
+        # update critic
+        self.value_optimizer.zero_grad()
+        critic_loss.backward()
+        self.value_optimizer.step()
+
 
     # Override save() from parent class PolicyGradientAgent
     def save(self, PATH): # You should not revise this
