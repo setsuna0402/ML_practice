@@ -2,6 +2,7 @@
 Propose:
 Train a reinforcement learning agent using the policy gradient method on the Lunar Lander environment from OpenAI Gym.
 In this version, we consider a critic to estimate the value function. We use a neural network to approximate the value function.
+The estimation of the value function is done by Monte Carlo method.
 Author: Dr. Ka Hou Leong
 Date: 28/1/2026
 Version: 0.2
