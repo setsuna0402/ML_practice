@@ -1,0 +1,13 @@
+I tried three methods to calculate the reward:
+A) on-policy gradient with accumulated decay reward
+B) on-policy gradient with accmulated decay reward, accompanying with actor-critic method whose value function neural network estimated by monte carlo 
+C) on-policy gradient with temporal difference reward, accompanying with actor-critic method whose value function neural network estimated by one-step temporal difference
+
+Case A understand to control the rocket to do soft-landing. However, it doesn't turn off all the engines after that. Thus, the result is unstable.
+
+Case B passed the strong baseline (total reward > 250). Overall, it is stable.
+
+Case C uses a very funny way to control the rocket. The rocket shakes like a yoyo. In the result, Case C usually cruches the rocket, but sometime it can do a perfect landing. 
+
+
+ 
