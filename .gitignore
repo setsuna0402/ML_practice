@@ -3,8 +3,10 @@ syntax: glob
 
 .DS_Store
 trained_result*
+project_data*
 *.pth
 *.png
+*.jpg
 *.optrpt
 *.pyc
 *.hdf5
