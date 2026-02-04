@@ -36,6 +36,9 @@ do_semi = False # Whether to do semi-supervised learning.
 # A greater batch size usually gives a more stable gradient.
 # But the GPU memory is limited, so please adjust it carefully.
 batch_size = 128
+# 0 means only the main process will load data. Greater than 0 means number of subprocesses to use for data loading.
+# If you use cuda, you may set it to a greater value like 4 or 8 to accelerate data loading.
+num_workers = 8  # You may change this value based on your system configuration.
 file_path = "./project_data_food_11"
 
 # It is important to do data augmentation in training.
@@ -64,8 +67,8 @@ unlabeled_set = DatasetFolder(file_path + "/training/unlabeled", loader=lambda x
 test_set = DatasetFolder(file_path + "/testing", loader=lambda x: Image.open(x), extensions="jpg", transform=test_tfm)
 
 # Construct data loaders.
-train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=use_pin_memory)
-valid_loader = DataLoader(valid_set, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=use_pin_memory)
+train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=use_pin_memory)
+valid_loader = DataLoader(valid_set, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=use_pin_memory)
 test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False)
 
 # Automatically choose the device to use.
@@ -157,7 +160,7 @@ for epoch in range(n_epochs_ae):
     train_loss = []
     # We use both labeled and unlabeled data to train the autoencoder.
     combined_dataset = ConcatDataset([train_set, unlabeled_set])
-    train_ae_loader = DataLoader(combined_dataset, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=use_pin_memory)
+    train_ae_loader = DataLoader(combined_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=use_pin_memory)
     # Iterate the training set by batches.
     for batch in tqdm(train_ae_loader):
 
@@ -205,7 +208,7 @@ for epoch in range(n_epochs):
         # Construct a new dataset and a data loader for training.
         # This is used in semi-supervised learning only.
         concat_dataset = ConcatDataset([train_set, pseudo_set])
-        train_loader = DataLoader(concat_dataset, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=use_pin_memory)
+        train_loader = DataLoader(concat_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=use_pin_memory)
 
     # ---------- Training ----------
     # Make sure the model is in train mode before training.
