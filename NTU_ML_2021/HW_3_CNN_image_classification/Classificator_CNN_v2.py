@@ -226,7 +226,7 @@ for epoch in range(n_epochs):
             features_vec = autoencoder_model.encoder(imgs.to(device))
 
         # Forward the data. (Make sure data and model are on the same device.)
-        logits = model(features_vec)
+        logits = classifier_model(features_vec)
 
         # Calculate the cross-entropy loss.
         # We don't need to apply softmax before computing cross-entropy as it is done automatically.
