@@ -25,8 +25,17 @@ import time
 from Model_Class import Classifier
 
 allow_device = True  # Set to False if you want to force using CPU.
-use_pin_memory = False  # Set to True if you use GPU. False for CPU and MPS.
-
+use_pin_memory = True  # Set to True if you use GPU. False for CPU and MPS.
+n_epochs = 80 # The number of training epochs for classifier. 
+do_semi = False # Whether to do semi-supervised learning.
+# Batch size for training, validation, and testing.
+# A greater batch size usually gives a more stable gradient.
+# But the GPU memory is limited, so please adjust it carefully.
+batch_size = 128
+# 0 means only the main process will load data. Greater than 0 means number of subprocesses to use for data loading.
+# If you use cuda, you may set it to a greater value like 4 or 8 to accelerate data loading.
+num_workers = 8  # You may change this value based on your system configuration.
+file_path = "./project_data_food_11" # Used to load data
 # It is important to do data augmentation in training.
 # However, not every augmentation is useful.
 # Please think about what kind of augmentation is helpful for food recognition.
@@ -35,7 +44,10 @@ train_tfm = transforms.Compose([
     transforms.Resize((128, 128)),
     # You may add some transforms here.
     # ToTensor() should be the last one of the transforms.
+    transforms.RandomHorizontalFlip(0.5),
+    transforms.RandomRotation(15),
     transforms.ToTensor(),
+    transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]), # Normalize the image with mean and std of ImageNet dataset.
 ])
 
 # We don't need augmentations in testing and validation.
@@ -43,13 +55,8 @@ train_tfm = transforms.Compose([
 test_tfm = transforms.Compose([
     transforms.Resize((128, 128)),
     transforms.ToTensor(),
+    transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]), # Normalize the image with mean and std of ImageNet dataset.
 ])
-
-# Batch size for training, validation, and testing.
-# A greater batch size usually gives a more stable gradient.
-# But the GPU memory is limited, so please adjust it carefully.
-batch_size = 128
-file_path = "./project_data_food_11"
 
 # Construct datasets.
 # The argument "loader" tells how torchvision reads the data.
@@ -59,8 +66,8 @@ unlabeled_set = DatasetFolder(file_path + "/training/unlabeled", loader=lambda x
 test_set = DatasetFolder(file_path + "/testing", loader=lambda x: Image.open(x), extensions="jpg", transform=test_tfm)
 
 # Construct data loaders.
-train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=use_pin_memory)
-valid_loader = DataLoader(valid_set, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=use_pin_memory)
+train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=use_pin_memory)
+valid_loader = DataLoader(valid_set, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=use_pin_memory)
 test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False)
 
 
@@ -128,12 +135,6 @@ criterion = nn.CrossEntropyLoss()
 # Initialize optimizer, you may fine-tune some hyperparameters such as learning rate on your own.
 optimizer = torch.optim.Adam(model.parameters(), lr=0.0003, weight_decay=1e-5)
 
-# The number of training epochs.
-n_epochs = 80
-
-# Whether to do semi-supervised learning.
-do_semi = False
-
 # start time record
 start_time = time.time()
 for epoch in range(n_epochs):
@@ -147,7 +148,7 @@ for epoch in range(n_epochs):
         # Construct a new dataset and a data loader for training.
         # This is used in semi-supervised learning only.
         concat_dataset = ConcatDataset([train_set, pseudo_set])
-        train_loader = DataLoader(concat_dataset, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=use_pin_memory)
+        train_loader = DataLoader(concat_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=use_pin_memory)
 
     # ---------- Training ----------
     # Make sure the model is in train mode before training.
