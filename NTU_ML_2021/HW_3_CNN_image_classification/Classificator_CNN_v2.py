@@ -189,7 +189,7 @@ for epoch in range(n_epochs_ae):
     train_loss = sum(train_loss) / len(train_loss)
 
     # Print the information.
-    print(f"[ Autoencoder Train | {epoch + 1:03d}/{n_epochs:03d} ] loss = {train_loss:.5f}")
+    print(f"[ Autoencoder Train | {epoch + 1:03d}/{n_epochs_ae:03d} ] loss = {train_loss:.5f}")
 # end time record
 end_time_ae = time.time()
 print("Autoencoder Training time: {:.2f} minutes".format((end_time_ae - start_time_ae)/60))
@@ -242,7 +242,7 @@ for epoch in range(n_epochs):
         loss.backward()
 
         # Clip the gradient norms for stable training.
-        grad_norm = nn.utils.clip_grad_norm_(model.parameters(), max_norm=10)
+        grad_norm = nn.utils.clip_grad_norm_(classifier_model.parameters(), max_norm=10)
 
         # Update the parameters with computed gradients.
         classifier_optimizer.step()
