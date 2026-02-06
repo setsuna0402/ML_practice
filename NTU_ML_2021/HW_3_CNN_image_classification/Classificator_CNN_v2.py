@@ -21,14 +21,16 @@ from PIL import Image
 # "ConcatDataset" and "Subset" are possibly useful when doing semi-supervised learning.
 from torch.utils.data import ConcatDataset, DataLoader, Subset
 from torchvision.datasets import DatasetFolder
+from torchinfo import summary
 
 # This is for the progress bar.
 from tqdm.auto import tqdm
 import time
-from Model_Class import AutoEncoder, Classifier_Autoencoder
+from Model_Class import AutoEncoder, Classifier_Autoencoder, JointEncoderClassifier
 
+show_model_summary = False # Whether to print the model summary. You may set it to False if you don't want to see the model summary.
 allow_device = True  # Set to False if you want to force using CPU.
-use_pin_memory = False  # Set to True if you use GPU. False for CPU and MPS.
+use_pin_memory = True  # Set to True if you use GPU. False for CPU and MPS.
 n_epochs = 80 # The number of training epochs for classifier. Currently, autoencoder and classifier are trained separately.
 n_epochs_ae = 40 # The number of training epochs for autoencoder.
 do_semi = False # Whether to do semi-supervised learning.
@@ -49,7 +51,10 @@ train_tfm = transforms.Compose([
     transforms.Resize((128, 128)),
     # You may add some transforms here.
     # ToTensor() should be the last one of the transforms.
+    transforms.RandomHorizontalFlip(0.5),
+    transforms.RandomRotation(15),
     transforms.ToTensor(),
+    transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]), # Normalize the image with mean and std of ImageNet dataset.
 ])
 
 # We don't need augmentations in testing and validation.
@@ -57,6 +62,7 @@ train_tfm = transforms.Compose([
 test_tfm = transforms.Compose([
     transforms.Resize((128, 128)),
     transforms.ToTensor(),
+    transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]), # Normalize the image with mean and std of ImageNet dataset.
 ])
 
 # Construct datasets.
@@ -135,6 +141,18 @@ autoencoder_model.device = device
 classifier_model = Classifier_Autoencoder().to(device)
 classifier_model.device = device
 
+# Joint model
+# Joint model: encoder + classifier trained end-to-end
+joint_model = JointEncoderClassifier(autoencoder_model.encoder, classifier_model).to(device)
+
+if show_model_summary:
+    print(autoencoder_model)
+    print(joint_model)
+    summary(joint_model, input_size=(1, 3, 128, 128))
+    print("Model summary shown. Please set 'show_model_summary' to False if you don't want to see the model summary.")
+    print("Code execution stopped here. Please set 'show_model_summary' to False to continue.")
+    exit()
+
 # Define the loss function.
 # For the autoencoder, we use mean squared error (MSE) as the measurement of performance.
 autoencoder_criterion = nn.MSELoss()
@@ -149,6 +167,9 @@ classifier_optimizer = torch.optim.Adam(classifier_model.parameters(), lr=0.0003
 
 # start time record
 start_time_ae = time.time()
+# We use both labeled and unlabeled data to train the autoencoder.
+combined_dataset = ConcatDataset([train_set, unlabeled_set])
+train_ae_loader = DataLoader(combined_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=use_pin_memory)
 
 # Train the autoencoder first.
 for epoch in range(n_epochs_ae):
@@ -158,14 +179,15 @@ for epoch in range(n_epochs_ae):
 
     # These are used to record information in training.
     train_loss = []
-    # We use both labeled and unlabeled data to train the autoencoder.
-    combined_dataset = ConcatDataset([train_set, unlabeled_set])
-    train_ae_loader = DataLoader(combined_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=use_pin_memory)
+    
     # Iterate the training set by batches.
     for batch in tqdm(train_ae_loader):
 
         # A batch consists of image data and corresponding labels.
         imgs, _ = batch
+        # print(imgs[0].shape)
+        # print(imgs[0])
+        # exit()
 
         # Forward the data. (Make sure data and model are on the same device.)
         reconstructed = autoencoder_model(imgs.to(device))
@@ -194,6 +216,55 @@ for epoch in range(n_epochs_ae):
 end_time_ae = time.time()
 print("Autoencoder Training time: {:.2f} minutes".format((end_time_ae - start_time_ae)/60))
 
+# Validate the autoencoder
+autoencoder_model.eval()  # Set autoencoder to eval mode
+# These are used to record information in validation.
+valid_loss = []
+
+
+# Iterate the validation set by batches.
+for batch in tqdm(valid_loader):
+
+    # A batch consists of image data and corresponding labels.
+    imgs, labels = batch
+
+    # We don't need gradient in validation.
+    # Using torch.no_grad() accelerates the forward process.
+    with torch.no_grad():
+        features_vec = autoencoder_model.encoder(imgs.to(device))
+        # logits = classifier_model(features_vec)
+
+    # We can still compute the loss (but not the gradient).
+    loss = autoencoder_criterion(autoencoder_model.decoder(features_vec), imgs.to(device))
+
+    # Record the loss and accuracy.
+    valid_loss.append(loss.item())
+    
+
+# The average loss and accuracy for entire validation set is the average of the recorded values.
+valid_loss = sum(valid_loss) / len(valid_loss)
+
+# Print the information.
+print(f"[ Valid ] loss = {valid_loss:.5f}")
+# exit()
+
+# IMPORTANT: ensure gradients through encoder
+# for p in joint_model.encoder.parameters():
+#     p.requires_grad = True
+
+# Define the optimizer for joint training. You may fine-tune some hyperparameters such as learning rate on your own.
+joint_optimizer = torch.optim.Adam([
+    {"params": autoencoder_model.encoder.parameters(), "lr": 1e-4},
+    {"params": classifier_model.parameters(), "lr": 3e-4},
+], weight_decay=1e-5)
+
+# Check if the encoder parameters require gradients
+print("Checking if encoder parameters require gradients:")
+print(any(p.requires_grad is False for p in joint_model.encoder.parameters()))
+print("Done checking encoder parameters. If the above line prints 'True', you need to set 'requires_grad' to True for all encoder parameters before joint training.")
+
+joint_model.train()  # Set joint model to train mode
+
 # start time record
 start_time_classifier = time.time()
 
@@ -217,7 +288,7 @@ for epoch in range(n_epochs):
     # These are used to record information in training.
     train_loss = []
     train_accs = []
-    autoencoder_model.eval()  # Set autoencoder to eval mode
+    # autoencoder_model.eval()  # Set autoencoder to eval mode
     # Iterate the training set by batches.
     for batch in tqdm(train_loader):
 
@@ -225,27 +296,30 @@ for epoch in range(n_epochs):
         imgs, labels = batch
 
         # Forward the data through the autoencoder to get features.
-        with torch.no_grad():
-            features_vec = autoencoder_model.encoder(imgs.to(device))
+        # with torch.no_grad():
+        #     features_vec = autoencoder_model.encoder(imgs.to(device))
 
         # Forward the data. (Make sure data and model are on the same device.)
-        logits = classifier_model(features_vec)
+        # logits = classifier_model(features_vec)
+        logits = joint_model(imgs.to(device))
 
         # Calculate the cross-entropy loss.
         # We don't need to apply softmax before computing cross-entropy as it is done automatically.
         loss = classifier_criterion(logits, labels.to(device))
 
         # Gradients stored in the parameters in the previous step should be cleared out first.
-        classifier_optimizer.zero_grad()
+        # classifier_optimizer.zero_grad()
+        joint_optimizer.zero_grad()
 
         # Compute the gradients for parameters.
         loss.backward()
 
         # Clip the gradient norms for stable training.
-        grad_norm = nn.utils.clip_grad_norm_(classifier_model.parameters(), max_norm=10)
+        grad_norm = nn.utils.clip_grad_norm_(joint_model.parameters(), max_norm=10)
 
         # Update the parameters with computed gradients.
-        classifier_optimizer.step()
+        # classifier_optimizer.step()
+        joint_optimizer.step()
 
         # Compute the accuracy for current batch.
         acc = (logits.argmax(dim=-1) == labels.to(device)).float().mean()
@@ -262,7 +336,7 @@ for epoch in range(n_epochs):
     print(f"[ Train | {epoch + 1:03d}/{n_epochs:03d} ] loss = {train_loss:.5f}, acc = {train_acc:.5f}")
 # end time record
 end_time_classifier = time.time()
-print("Classifier Training time: {:.2f} minutes".format((end_time_classifier - start_time_classifier)/60))
+print("Joint Classifier Training time: {:.2f} minutes".format((end_time_classifier - start_time_classifier)/60))
 
 # record validation time
 start_time_validation = time.time()
@@ -270,6 +344,7 @@ start_time_validation = time.time()
 # Make sure the model is in eval mode so that some modules like dropout are disabled and work normally.
 autoencoder_model.eval()  # Set autoencoder to eval mode
 classifier_model.eval()
+joint_model.eval()
 
 # These are used to record information in validation.
 valid_loss = []
@@ -284,8 +359,9 @@ for batch in tqdm(valid_loader):
     # We don't need gradient in validation.
     # Using torch.no_grad() accelerates the forward process.
     with torch.no_grad():
-        features_vec = autoencoder_model.encoder(imgs.to(device))
-        logits = classifier_model(features_vec)
+        # features_vec = autoencoder_model.encoder(imgs.to(device))
+        # logits = classifier_model(features_vec)
+        logits = joint_model(imgs.to(device))
 
     # We can still compute the loss (but not the gradient).
     loss = classifier_criterion(logits, labels.to(device))
@@ -316,13 +392,17 @@ print("Time cost: Autoencoder {:.2f} mins, Classifier {:.2f} mins".format((end_t
 # Save the trained model.
 autoencoder_model.eval()
 classifier_model.eval()
+joint_model.eval()
 autoencoder_model.to(torch.device("cpu"))  # Move the model to CPU before saving.
 classifier_model.to(torch.device("cpu"))  # Move the model to CPU before saving.
+joint_model.to(torch.device("cpu"))  # Move the model to CPU before saving.
 model_dict = { 
             "autoencoder_network" : autoencoder_model.state_dict(),
             "autoencoder_optimizer" : autoencoder_optimizer.state_dict(),
             "classifier_network" : classifier_model.state_dict(),
             "classifier_optimizer" : classifier_optimizer.state_dict(),
+            "joint_network" : joint_model.state_dict(),
+            "joint_optimizer" : joint_optimizer.state_dict(),
         }   
 torch.save(model_dict, "classifier_cnn_v2_batch_{}_epoch_{}.pth".format(batch_size, n_epochs))
 print("Model saved.")

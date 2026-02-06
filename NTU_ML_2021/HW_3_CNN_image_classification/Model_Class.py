@@ -24,19 +24,19 @@ class AutoEncoder(nn.Module):
             nn.Conv2d(128, 256, 3, 2, 1),  # [256, 16, 16]
             nn.LeakyReLU(),
             nn.Conv2d(256, 512, 3, 2, 1),  # [512, 8, 8]
-            nn.LeakyReLU(),
-            nn.Flatten(),  # [512*8*8]
-            nn.Linear(512 * 8 * 8, 1024), # [Batch_size, 1024]
-            nn.LeakyReLU(),
-            nn.Linear(1024, 256), # [Batch_size, 256] feature vector
+            # nn.LeakyReLU(),
+            # nn.Flatten(),  # [512*8*8]
+            # nn.Linear(512 * 8 * 8, 1024), # [Batch_size, 1024]
+            # nn.LeakyReLU(),
+            # nn.Linear(1024, 256), # [Batch_size, 256] feature vector
         )
         # Decoder
         self.decoder = nn.Sequential(
-            nn.Linear(256, 1024),
-            nn.LeakyReLU(),
-            nn.Linear(1024, 512 * 8 * 8),
-            nn.LeakyReLU(),
-            nn.Unflatten(1, (512, 8, 8)),  # [512, 8, 8]
+            # nn.Linear(256, 1024),
+            # nn.LeakyReLU(),
+            # nn.Linear(1024, 512 * 8 * 8),
+            # nn.LeakyReLU(),
+            # nn.Unflatten(1, (512, 8, 8)),  # [512, 8, 8]
             nn.ConvTranspose2d(512, 256, 3, 2, 1, output_padding=1),  # [256, 16, 16]
             nn.LeakyReLU(),
             nn.ConvTranspose2d(256, 128, 3, 2, 1, output_padding=1),  # [128, 32, 32]
@@ -44,7 +44,7 @@ class AutoEncoder(nn.Module):
             nn.ConvTranspose2d(128, 64, 3, 2, 1, output_padding=1),   # [64, 64, 64]
             nn.LeakyReLU(),
             nn.ConvTranspose2d(64, 3, 3, 2, 1, output_padding=1),     # [3, 128, 128]
-            nn.Sigmoid(),  # To ensure the output is in [0, 1]
+            nn.Tanh(), # Output pixel values in range [-1, 1]
         )
 
     def forward(self, x):
@@ -57,20 +57,38 @@ class Classifier_Autoencoder(nn.Module):
     def __init__(self):
         super().__init__()
         # The classifier uses the feature vector extracted by the autoencoder's encoder.
-        # input vector size: [256]
+        # input vector size: [512, 8, 8]
         self.fc_layers = nn.Sequential(
-            nn.Linear(256, 1024),
-            nn.BatchNorm1d(1024),
+            # nn.AdaptiveAvgPool2d(1),  # [B, 512, 1, 1]
+            # nn.Flatten(),             # [B, 512]
+            nn.Conv2d(512, 256, 3, 1, 1),  # [256, 8, 8]
+            nn.BatchNorm2d(256),
+            nn.LeakyReLU(),
+            nn.MaxPool2d(2, 2, 0),              # [256, 4, 4]
+
+            nn.Conv2d(256, 128, 3, 1, 1),  # [128, 4, 4]
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(),
+            nn.MaxPool2d(2, 2, 0),         # [128, 2, 2]
+            nn.Flatten(),                 # [B, 128*2*2 = 512]
+
+            nn.Linear(512, 256),
+            nn.BatchNorm1d(256),
             nn.LeakyReLU(),
             nn.Dropout(0.25),  # Dropout for regularization
 
-            nn.Linear(1024, 512),
-            nn.BatchNorm1d(512),
-            nn.LeakyReLU(),
-            nn.Dropout(0.25),  # Dropout for regularization
+            # nn.Linear(256, 1024),
+            # nn.BatchNorm1d(1024),
+            # nn.LeakyReLU(),
+            # nn.Dropout(0.25),  # Dropout for regularization
 
-            nn.Linear(512, 128),
-            nn.BatchNorm1d(128),
+            # nn.Linear(1024, 256),
+            # nn.BatchNorm1d(256),
+            # nn.LeakyReLU(),
+            # nn.Dropout(0.25),  # Dropout for regularization
+
+            nn.Linear(256, 128),
+            # nn.BatchNorm1d(128),
             nn.LeakyReLU(),
             nn.Linear(128, 11),  # 11 classes for food classification
         )
@@ -83,6 +101,21 @@ class Classifier_Autoencoder(nn.Module):
         x = self.fc_layers(x)
 
         return x
+
+class JointEncoderClassifier(nn.Module):
+    """
+    Joint end-to-end model:
+    image -> encoder -> classifier -> logits
+    """
+    def __init__(self, encoder: nn.Module, classifier: nn.Module):
+        super().__init__()
+        self.encoder = encoder
+        self.classifier = classifier
+
+    def forward(self, x):
+        feats = self.encoder(x)
+        logits = self.classifier(feats)
+        return logits
 
 class Classifier(nn.Module):
     def __init__(self):
