@@ -162,3 +162,66 @@ class Classifier(nn.Module):
         # The features are transformed by fully-connected layers to obtain the final logits.
         x = self.fc_layers(x)
         return x
+
+class Deep_Classifier(nn.Module):
+    def __init__(self):
+        super().__init__()
+        # The arguments for commonly used modules:
+        # torch.nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding)
+        # torch.nn.MaxPool2d(kernel_size, stride, padding)
+
+        # input image size: [3, 128, 128]
+        self.cnn_layers = nn.Sequential(
+            nn.Conv2d(3, 64, 5, 1, 2), # [64, 128, 128]
+            nn.BatchNorm2d(64),
+            nn.LeakyReLU(),
+            nn.MaxPool2d(2, 2, 0), # [64, 64, 64]
+
+            nn.Conv2d(64, 128, 4, 2, 2), # [128, 33, 33]
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(),
+
+            nn.Conv2d(128, 256, 4, 1, 1), # [256, 32, 32]
+            nn.BatchNorm2d(256),
+            nn.LeakyReLU(),
+            nn.MaxPool2d(4, 4, 0), # [256, 8, 8]
+
+            nn.Conv2d(256, 512, 4, 1, 2), # [512, 9, 9]
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(),
+            nn.MaxPool2d(2, 2, 0), # [512, 4, 4]
+            
+        )
+        self.fc_layers = nn.Sequential(
+            nn.Linear(512 * 4 * 4, 2048), # [8192] -> [2056]
+            nn.BatchNorm1d(2048),
+            nn.LeakyReLU(),
+            nn.MaxPool1d(2, 2, 0), # [2048] -> [1024]
+            nn.Dropout(0.25),
+
+            nn.Linear(1024, 512), # [1024] -> [512]
+            nn.BatchNorm1d(512),
+            nn.LeakyReLU(),
+            nn.MaxPool1d(2, 2, 0), # [512] -> [256]
+            nn.Dropout(0.25),
+
+            nn.Linear(256, 64), # [256] -> [64]
+            nn.BatchNorm1d(64),
+            nn.LeakyReLU(),
+            nn.Dropout(0.25),
+            nn.Linear(64, 11) # [64] -> [11]
+        )
+
+    def forward(self, x):
+        # input (x): [batch_size, 3, 128, 128]
+        # output: [batch_size, 11]
+
+        # Extract features by convolutional layers.
+        x = self.cnn_layers(x)
+
+        # The extracted feature map must be flatten before going to fully-connected layers.
+        x = x.flatten(1)
+
+        # The features are transformed by fully-connected layers to obtain the final logits.
+        x = self.fc_layers(x)
+        return x
