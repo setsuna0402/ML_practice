@@ -9,6 +9,22 @@ Date: 4/2/2026
 import numpy as np
 import torch
 import torch.nn as nn
+from torch.utils.data import Dataset, Subset
+
+
+# Define a dataset class which is a subset of a dataset, and the labels are psedo
+class SubsetWithPseudoLabels(Dataset):
+    """A Subset that returns (img, pseudo_label) instead of (img, original_label)."""
+    def __init__(self, subset: Subset, pseudo_labels: list[int]): # type hint
+        self.subset = subset
+        self.pseudo_labels = pseudo_labels  # aligned with subset order
+
+    def __len__(self):
+        return len(self.subset)
+
+    def __getitem__(self, idx):
+        img, _ = self.subset[idx]          # ignore original label
+        return img, self.pseudo_labels[idx]
 
 # Define the autocoder-based classifier.
 class AutoEncoder(nn.Module):

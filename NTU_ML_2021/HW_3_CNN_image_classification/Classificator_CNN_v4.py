@@ -2,11 +2,11 @@
 Propose:
 Train a Convolutional Neural Network (CNN) for image classification tasks.
 The data includes labeled images and unlabelled images for semi-supervised learning.
-In the version 0.3, we focus on building and training the CNN using only the labeled images.
-This code is similar to v1, but the CNN architecture is different and it is deeper and more complicated than the one in v1.
+In the version 0.4, we use the same CNN architecture as version 0.3. 
+However, we consider the unlabeled data for training by generating pseudo-labels for them. (semi-supervised learning)
 Author: Dr. Ka Hou Leong
 Date: 4/2/2026
-Version: 0.3
+Version: 0.4
 ML library: PyTorch
 '''
 
@@ -24,13 +24,16 @@ from torchinfo import summary
 # This is for the progress bar.
 from tqdm.auto import tqdm
 import time
-from Model_Class import Deep_Classifier
+from Model_Class import Classifier, Deep_Classifier, SubsetWithPseudoLabels
 
+run_in_background = False # make tqdm to be silent mode
 show_model_summary = False # Whether to print the model summary. You may set it to False if you don't want to see the model summary.
 allow_device = True  # Set to False if you want to force using CPU.
 use_pin_memory = True  # Set to True if you use GPU. False for CPU and MPS.
 n_epochs = 80 # The number of training epochs for classifier. 
-do_semi = False # Whether to do semi-supervised learning.
+do_semi = True # Whether to do semi-supervised learning.
+n_semi_redo = 5 # Redo pseudo labelling every n_semi_redo epochs
+n_threshold = 0 # Start to do semi-supervise after n_threshold epochs
 # Batch size for training, validation, and testing.
 # A greater batch size usually gives a more stable gradient.
 # But the GPU memory is limited, so please adjust it carefully.
@@ -38,7 +41,12 @@ batch_size = 128
 # 0 means only the main process will load data. Greater than 0 means number of subprocesses to use for data loading.
 # If you use cuda, you may set it to a greater value like 4 or 8 to accelerate data loading.
 num_workers = 8  # You may change this value based on your system configuration.
-file_path = "./project_data_food_11" # Used to load data
+file_path = "./project_data_food_11" # the location of the dataset
+
+use_pretrain_model = True # Load a pretrained model and use it as the initial condition of the classifier
+model_path = "./classifier_cnn_v3_batch_128_epoch_80.pth"
+
+
 # It is important to do data augmentation in training.
 # However, not every augmentation is useful.
 # Please think about what kind of augmentation is helpful for food recognition.
@@ -73,17 +81,15 @@ train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_wo
 valid_loader = DataLoader(valid_set, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=use_pin_memory)
 test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False)
 
+size_train_set = len(train_set)
 
-
-# This func doesn't be used in version 0.1. It is designed for semi-supervised learning.    
-def get_pseudo_labels(dataset, model, threshold=0.65):
+# This func is designed for semi-supervised learning.    
+def get_pseudo_labels(dataset, model, device, threshold=0.8):
     # This functions generates pseudo-labels of a dataset using given model.
     # It returns an instance of DatasetFolder containing images whose prediction confidences exceed a given threshold.
     # You are NOT allowed to use any models trained on external data for pseudo-labeling.
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-
     # Construct a data loader.
-    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=use_pin_memory)
 
     # Make sure the model is in eval mode.
     model.eval()
@@ -91,30 +97,52 @@ def get_pseudo_labels(dataset, model, threshold=0.65):
     # In Pytorch, cross-entropy loss function already includes softmax operation.
     # So, we don't define softmax in the model. We define it here for obtaining probability distributions.
     softmax = nn.Softmax(dim=-1) 
-
+    
+    offset = 0 # This is used to calculate the index of the data in the entire dataset.
+    subset_indices = [] # This is used to select the deserved data from the whole dataset
+    subset_pseudo_label = [] # Record the predicted label and use in the pseudo subdataset
+    print("Start to get pseudo labels for the unlabelled dataset")
     # Iterate over the dataset by batches.
-    for batch in tqdm(data_loader):
+    for batch in tqdm(data_loader, disable=run_in_background):
         img, _ = batch
-
+        img_d = img.to(device) # Move the data to the same device as model.
+        size = img_d.size(0) # batch size for current batch, which may be smaller than the specified batch size for the last batch.
+        # Calculate the index of the data in this batch 
+        local_index = torch.arange(size, dtype=torch.int32, device=device, requires_grad=False) + offset
         # Forward the data
         # Using torch.no_grad() accelerates the forward process.
         with torch.no_grad():
-            logits = model(img.to(device)) # logits: [batch_size, n_classes] No gradient calculation
+            logits = model(img_d) # logits: [batch_size, n_classes] No gradient calculation
 
         # Obtain the probability distributions by applying softmax on logits.
         probs = softmax(logits)
 
-        # ---------- TODO ----------
         # Filter the data and construct a new dataset.
+        pred_prob, pred_label = probs.max(dim=-1) # [batch_size], [batch_size]
+        mask = pred_prob > threshold # mask: [batch_size] bool tensor
+        # local_index[mask]  # [n_select] tensor
+        subset_indices.extend(local_index[mask].cpu().tolist())
+        subset_pseudo_label.extend(pred_label[mask].cpu().tolist())
+
+        offset += size
 
     # # Turn off the eval mode.
     model.train()
-    return dataset
+    selected_subset = Subset(dataset, subset_indices)
+    pseudo_dataset = SubsetWithPseudoLabels(selected_subset, subset_pseudo_label)
+    # Here, we randomly select len(train_set) data from the pseudo subset
+    # Ensuring the number of pseudo samples is not higher than the number of labelled samples
+    perm = torch.randperm(len(pseudo_dataset))[:size_train_set]
+    balanced_subset = Subset(pseudo_dataset, perm.tolist())
+    
+    print("Labelling is done!")
+    return balanced_subset
 
 # Automatically choose the device to use.
 if allow_device:
 # Move the network to the appropriate device
     if torch.cuda.is_available():
+        torch.backends.cudnn.benchmark = True
         device = torch.device("cuda")
         print("Using GPU")
     elif torch.backends.mps.is_available():
@@ -127,10 +155,16 @@ else:
     device = torch.device("cpu")
     print("Using CPU")
 
-
-# Initialize a model, and put it on the device specified.
-model = Deep_Classifier().to(device)
-model.device = device
+if use_pretrain_model:
+    # Load the pretrained classifier
+    model = Deep_Classifier()
+    checkpoint = torch.load(model_path)
+    model.load_state_dict(checkpoint["classifier_network"])
+    model.to(device)
+else:
+    # Initialize a model, and put it on the device specified.
+    model = Deep_Classifier().to(device)
+    model.device = device
 
 if show_model_summary:
     print(model)
@@ -151,9 +185,9 @@ for epoch in range(n_epochs):
     # ---------- TODO ----------
     # In each epoch, relabel the unlabeled dataset for semi-supervised learning.
     # Then you can combine the labeled dataset and pseudo-labeled dataset for the training.
-    if do_semi:
+    if do_semi and (epoch % n_semi_redo == 0) and (epoch >= n_threshold):
         # Obtain pseudo-labels for unlabeled data using trained model.
-        pseudo_set = get_pseudo_labels(unlabeled_set, model)
+        pseudo_set = get_pseudo_labels(unlabeled_set, model, device)
 
         # Construct a new dataset and a data loader for training.
         # This is used in semi-supervised learning only.
@@ -169,7 +203,7 @@ for epoch in range(n_epochs):
     train_accs = []
 
     # Iterate the training set by batches.
-    for batch in tqdm(train_loader):
+    for batch in tqdm(train_loader, disable=run_in_background):
 
         # A batch consists of image data and corresponding labels.
         imgs, labels = batch
@@ -213,7 +247,7 @@ for epoch in range(n_epochs):
     valid_accs = []
 
     # Iterate the validation set by batches.
-    for batch in tqdm(valid_loader):
+    for batch in tqdm(valid_loader, disable=run_in_background):
 
         # A batch consists of image data and corresponding labels.
         imgs, labels = batch
@@ -248,7 +282,7 @@ valid_loss = []
 valid_accs = []
 
 # Iterate the validation set by batches.
-for batch in tqdm(valid_loader):
+for batch in tqdm(valid_loader, disable=run_in_background):
 
     # A batch consists of image data and corresponding labels.
     imgs, labels = batch
@@ -286,5 +320,5 @@ model_dict = {
             "classifier_network" : model.state_dict(),
             "classifier_optimizer" : optimizer.state_dict(),
         }   
-torch.save(model_dict, "classifier_cnn_v3_batch_{}_epoch_{}.pth".format(batch_size, n_epochs))
+torch.save(model_dict, "classifier_cnn_v4_batch_{}_epoch_{}.pth".format(batch_size, n_epochs))
 print("Model saved.")
