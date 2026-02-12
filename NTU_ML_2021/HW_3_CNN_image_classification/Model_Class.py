@@ -10,6 +10,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, Subset
+import torchvision.models as models
 
 
 # Define a dataset class which is a subset of a dataset, and the labels are psedo
@@ -25,6 +26,32 @@ class SubsetWithPseudoLabels(Dataset):
     def __getitem__(self, idx):
         img, _ = self.subset[idx]          # ignore original label
         return img, self.pseudo_labels[idx]
+
+# Resnet18
+class Classifier_Resnet18(nn.Module):
+    def __init__(self):
+        super().__init__()
+        # input image size: [3, 128, 128]
+        self.resnet18_layers = models.resnet18(weights=None)
+        # Get the number of input features for the final layer
+        num_ftrs = self.resnet18_layers.fc.in_features
+        self.resnet18_layers.fc  = nn.Sequential(
+            nn.BatchNorm1d(num_ftrs),
+            nn.Linear(num_ftrs, 128),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(128, 11)
+        )
+        # self.resnet18_layers.fc = nn.Linear(num_ftrs, 11)  # replace the classifier head
+    def forward(self, x):
+        # input (x): [batch_size, 3, 128, 128]
+        # output: [batch_size, 11]
+
+        # Extract features by convolutional layers.
+        x = self.resnet18_layers(x)
+
+        return x
+
 
 # Define the autocoder-based classifier.
 class AutoEncoder(nn.Module):
