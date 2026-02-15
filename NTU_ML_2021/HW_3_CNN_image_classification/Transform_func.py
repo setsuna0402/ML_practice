@@ -11,7 +11,7 @@ train_transform = transforms.Compose([
     #     transforms.AutoAugment(transforms.AutoAugmentPolicy.CIFAR10),
     #     transforms.AutoAugment(transforms.AutoAugmentPolicy.SVHN)]
     # ),
-    transforms.RandomResizedCrop((224, 224), scale=(0.5, 1)),
+    transforms.RandomResizedCrop((224, 224), scale=(0.3, 1)),
     # transforms.ColorJitter(0.2, 0.2, 0.2, 0.05),
     transforms.ColorJitter(0.2, 0.2),
     transforms.RandomHorizontalFlip(0.5),

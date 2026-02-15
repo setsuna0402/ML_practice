@@ -15,12 +15,14 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
+from torchvision.transforms import v2
 from PIL import Image
 # "ConcatDataset" and "Subset" are possibly useful when doing semi-supervised learning.
 from torch.utils.data import ConcatDataset, DataLoader, Subset
 from torchvision.datasets import DatasetFolder
 import torchvision.models as models
 from torchinfo import summary
+import matplotlib.pyplot as plt
 
 # This is for the progress bar.
 from tqdm.auto import tqdm
@@ -32,10 +34,17 @@ run_in_background = True # make tqdm to be silent mode
 show_model_summary = False # Whether to print the model summary. You may set it to False if you don't want to see the model summary.
 allow_device = True  # Set to False if you want to force using CPU.
 use_pin_memory = True  # Set to True if you use GPU. False for CPU and MPS.
-n_epochs = 160 # The number of training epochs for classifier. 
+n_epochs = 240 # The number of training epochs for classifier. 
 do_semi = True # Whether to do semi-supervised learning.
 n_semi_redo = 5 # Redo pseudo labelling every n_semi_redo epochs
 n_threshold = 40 # Start to do semi-supervise after n_threshold epochs
+# Mixup data. This may work for image classification
+do_mixup = False
+mixup_alpha = 0.2
+# Cut and Mix images
+do_cutmix = True # In principle, mixup and cutup can work together. However, we don't support it in this version. You need to choice one!
+cutmix_alpha = 1.0
+
 # Batch size for training, validation, and testing.
 # A greater batch size usually gives a more stable gradient.
 # But the GPU memory is limited, so please adjust it carefully.
@@ -103,8 +112,8 @@ size_train_set = len(train_set)
 def get_pseudo_labels(dataset_infer, dataset_augment, model, device, threshold=0.9):
     # This functions generates pseudo-labels of a dataset using given model.
     # It returns an instance of DatasetFolder containing images whose prediction confidences exceed a given threshold.
-    # You are NOT allowed to use any models trained on external data for pseudo-labeling.
-    # Construct a data loader.
+    
+    # Construct a data loader. P.S. dataset_infer is free from augmentation! except resize and normalisation
     data_loader_infer = DataLoader(dataset_infer, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=use_pin_memory)
     # data_loader_augment = DataLoader(dataset_augment, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=use_pin_memory)
 
@@ -156,6 +165,28 @@ def get_pseudo_labels(dataset_infer, dataset_augment, model, device, threshold=0
     # return pseudo_dataset
     return balanced_subset
 
+def mixing_data(image, label, device, alpha=0.2):
+    # Mix up data from the same batch
+    # image shape: [B, channel, H, W]
+    # label shape: [B, n_classes]
+    # alpha 
+    if alpha > 0:
+        # use beta distribution since we want lam close to 0 or 1. 
+        # When lamda close 0, 1, the mixed img is liks the real imgs with small perturbation
+        lam = np.random.beta(alpha, alpha)
+    else:
+        lam = 1.0
+    image = image.to(device)
+    label = label.to(device)
+    batch_size = image.size(0)
+    # randomly change the order
+    index = torch.randperm(batch_size, device=device)
+    # mixup images
+    mixed_x = lam * image + (1 - lam) * image[index]
+    label_a, label_b = label, label[index]
+
+    return mixed_x, label_a, label_b, lam
+
 # Automatically choose the device to use.
 if allow_device:
 # Move the network to the appropriate device
@@ -193,13 +224,19 @@ if show_model_summary:
 
 # For the classification task, we use cross-entropy as the measurement of performance.
 # criterion = nn.CrossEntropyLoss()
-criterion = torch.nn.CrossEntropyLoss(label_smoothing=0.1)
+criterion = torch.nn.CrossEntropyLoss(label_smoothing=0.0)
+# For Cut Mix
+if do_cutmix:
+    cutmix = v2.CutMix(alpha=cutmix_alpha, num_classes=11)
 
 # Initialize optimizer, you may fine-tune some hyperparameters such as learning rate on your own.
-# optimizer = torch.optim.AdamW(model.parameters(), lr=0.0003, weight_decay=1e-3)
-optimizer = torch.optim.SGD(model.parameters(), lr=0.03, momentum=0.9, weight_decay=1e-3) # Resnet is deep. Use SGD to accelerate the training process
+optimizer = torch.optim.AdamW(model.parameters(), lr=0.0003, weight_decay=1e-3)
+# optimizer = torch.optim.SGD(model.parameters(), lr=0.03, momentum=0.9, weight_decay=1e-3) # Resnet is deep. Use SGD to accelerate the training process
 # This is for SGD. Dynamically decay the lr. 
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=n_epochs)
+
+# Record validation accuracy across epochs
+valid_acc_epoch = []
 
 # start time record
 start_time = time.time()
@@ -229,13 +266,25 @@ for epoch in range(n_epochs):
 
         # A batch consists of image data and corresponding labels.
         imgs, labels = batch
-
-        # Forward the data. (Make sure data and model are on the same device.)
-        logits = model(imgs.to(device))
-
-        # Calculate the cross-entropy loss.
-        # We don't need to apply softmax before computing cross-entropy as it is done automatically.
-        loss = criterion(logits, labels.to(device))
+        # Send data to device
+        imgs = imgs.to(device)
+        labels = labels.to(device)
+        if do_mixup:
+            # perform Mix up
+            imgs_mixed, label_a, label_b, lam = mixing_data(imgs, labels, device, alpha=mixup_alpha)
+            logits = model(imgs_mixed) # Make sure data and model are on the same device.
+            loss = lam * criterion(logits, label_a) + (1 - lam) * criterion(logits, label_b)
+        elif do_cutmix:
+            # Perform cut mix
+            imgs, labels = cutmix(imgs, labels)
+            logits = model(imgs) # Make sure data and model are on the same device.
+            loss = criterion(logits, labels)
+        else:
+            # Forward the data.
+            logits = model(imgs)
+            # Calculate the cross-entropy loss.
+            # We don't need to apply softmax before computing cross-entropy as it is done automatically.
+            loss = criterion(logits, labels)
 
         # Gradients stored in the parameters in the previous step should be cleared out first.
         optimizer.zero_grad()
@@ -248,20 +297,28 @@ for epoch in range(n_epochs):
 
         # Update the parameters with computed gradients.
         optimizer.step()
-
-        # Compute the accuracy for current batch.
-        acc = (logits.argmax(dim=-1) == labels.to(device)).float().mean()
+        # Calculate the accuracy only when we don't implement Mixup and CutMix
+        if (not do_cutmix) and (not do_mixup):
+            # Compute the accuracy for current batch.
+            acc = (logits.argmax(dim=-1) == labels).float().mean()
+            train_accs.append(acc)
 
         # Record the loss and accuracy.
         train_loss.append(loss.item())
-        train_accs.append(acc)
 
     # The average loss and accuracy of the training set is the average of the recorded values.
     train_loss = sum(train_loss) / len(train_loss)
-    train_acc = sum(train_accs) / len(train_accs)
 
-    # Print the information.
-    print(f"[ Train | {epoch + 1:03d}/{n_epochs:03d} ] loss = {train_loss:.5f}, acc = {train_acc:.5f}")
+    #
+    if do_mixup:
+        print("We use mixup augmentation. So, accuracy for training is not well defined. Loss value is more informative.")
+        print(f"[ Train | {epoch + 1:03d}/{n_epochs:03d} ] loss = {train_loss:.5f}")
+    elif do_cutmix:
+        print("We use cutmix augmentation. So, accuracy for training is not well defined. Loss value is more informative.")   
+        print(f"[ Train | {epoch + 1:03d}/{n_epochs:03d} ] loss = {train_loss:.5f}")
+    else:
+        train_acc = sum(train_accs) / len(train_accs)     
+        print(f"[ Train | {epoch + 1:03d}/{n_epochs:03d} ] loss = {train_loss:.5f}, acc = {train_acc:.5f}")
     model.eval()
 
     # These are used to record information in validation.
@@ -287,7 +344,7 @@ for epoch in range(n_epochs):
 
         # Record the loss and accuracy.
         valid_loss.append(loss.item())
-        valid_accs.append(acc)
+        valid_accs.append(acc.item())
 
     scheduler.step() # update learning rate
     current_lr = optimizer.param_groups[0]["lr"]
@@ -295,6 +352,7 @@ for epoch in range(n_epochs):
     # The average loss and accuracy for entire validation set is the average of the recorded values.
     valid_loss = sum(valid_loss) / len(valid_loss)
     valid_acc = sum(valid_accs) / len(valid_accs)
+    valid_acc_epoch.append(valid_acc)
     # Print the information.
     print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}, lr = {current_lr:.5f}")
 
@@ -338,6 +396,16 @@ print(f"[ Valid ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
 # end time record
 end_time = time.time()
 print("Training time: {:.2f} minutes".format((end_time - start_time)/60))
+
+# Convert valid_acc_epoch to numpy array for making plot
+valid_acc_epoch = np.array(valid_acc_epoch)
+plt.plot(np.arange(n_epochs), valid_acc_epoch, "b-", label="Validation")
+plt.xlabel("Epoch")
+plt.ylabel("Accuracy")
+plt.savefig("classifier_v5_accuracy_batch_{}_epoch_{}_CutMiX_semi_supervised_AdamW_b.png".format(batch_size, n_epochs))
+plt.close()
+
+
 # Save the trained model.
 model.eval()
 model.to(torch.device("cpu"))  # Move the model to CPU before saving.
@@ -346,5 +414,6 @@ model_dict = {
             "classifier_optimizer" : optimizer.state_dict(),
         }   
 # torch.save(model_dict, "classifier_cnn_v5_batch_{}_epoch_{}_semi_supervised_adamW_b.pth".format(batch_size, n_epochs))
-torch.save(model_dict, "classifier_cnn_v5_batch_{}_epoch_{}_semi_supervised_SGD.pth".format(batch_size, n_epochs))
+# torch.save(model_dict, "classifier_cnn_v5_batch_{}_epoch_{}_mixup_semi_supervised_SGD_low_threshold.pth".format(batch_size, n_epochs))
+torch.save(model_dict, "classifier_cnn_v5_batch_{}_epoch_{}_CutMiX_semi_supervised_AdamW_b.pth".format(batch_size, n_epochs))
 print("Model saved.")
