@@ -29,8 +29,7 @@ from Model_Class import Deep_Classifier
 show_model_summary = False # Whether to print the model summary. You may set it to False if you don't want to see the model summary.
 allow_device = True  # Set to False if you want to force using CPU.
 use_pin_memory = True  # Set to True if you use GPU. False for CPU and MPS.
-n_epochs = 80 # The number of training epochs for classifier. 
-do_semi = False # Whether to do semi-supervised learning.
+n_epochs = 160 # The number of training epochs for classifier. 
 # Batch size for training, validation, and testing.
 # A greater batch size usually gives a more stable gradient.
 # But the GPU memory is limited, so please adjust it carefully.
@@ -47,6 +46,11 @@ train_tfm = transforms.Compose([
     transforms.Resize((128, 128)),
     # You may add some transforms here.
     # ToTensor() should be the last one of the transforms.
+    transforms.RandomChoice(
+        [transforms.AutoAugment(),
+        transforms.AutoAugment(transforms.AutoAugmentPolicy.CIFAR10),
+        transforms.AutoAugment(transforms.AutoAugmentPolicy.SVHN)]
+    ),
     transforms.RandomHorizontalFlip(0.5),
     transforms.RandomRotation(15),
     transforms.ToTensor(),
@@ -74,42 +78,6 @@ valid_loader = DataLoader(valid_set, batch_size=batch_size, shuffle=True, num_wo
 test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False)
 
 
-
-# This func doesn't be used in version 0.1. It is designed for semi-supervised learning.    
-def get_pseudo_labels(dataset, model, threshold=0.65):
-    # This functions generates pseudo-labels of a dataset using given model.
-    # It returns an instance of DatasetFolder containing images whose prediction confidences exceed a given threshold.
-    # You are NOT allowed to use any models trained on external data for pseudo-labeling.
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-
-    # Construct a data loader.
-    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
-
-    # Make sure the model is in eval mode.
-    model.eval()
-    # Define softmax function.
-    # In Pytorch, cross-entropy loss function already includes softmax operation.
-    # So, we don't define softmax in the model. We define it here for obtaining probability distributions.
-    softmax = nn.Softmax(dim=-1) 
-
-    # Iterate over the dataset by batches.
-    for batch in tqdm(data_loader):
-        img, _ = batch
-
-        # Forward the data
-        # Using torch.no_grad() accelerates the forward process.
-        with torch.no_grad():
-            logits = model(img.to(device)) # logits: [batch_size, n_classes] No gradient calculation
-
-        # Obtain the probability distributions by applying softmax on logits.
-        probs = softmax(logits)
-
-        # ---------- TODO ----------
-        # Filter the data and construct a new dataset.
-
-    # # Turn off the eval mode.
-    model.train()
-    return dataset
 
 # Automatically choose the device to use.
 if allow_device:
@@ -148,18 +116,6 @@ optimizer = torch.optim.Adam(model.parameters(), lr=0.0003, weight_decay=1e-5)
 # start time record
 start_time = time.time()
 for epoch in range(n_epochs):
-    # ---------- TODO ----------
-    # In each epoch, relabel the unlabeled dataset for semi-supervised learning.
-    # Then you can combine the labeled dataset and pseudo-labeled dataset for the training.
-    if do_semi:
-        # Obtain pseudo-labels for unlabeled data using trained model.
-        pseudo_set = get_pseudo_labels(unlabeled_set, model)
-
-        # Construct a new dataset and a data loader for training.
-        # This is used in semi-supervised learning only.
-        concat_dataset = ConcatDataset([train_set, pseudo_set])
-        train_loader = DataLoader(concat_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=use_pin_memory)
-
     # ---------- Training ----------
     # Make sure the model is in train mode before training.
     model.train()
@@ -286,5 +242,5 @@ model_dict = {
             "classifier_network" : model.state_dict(),
             "classifier_optimizer" : optimizer.state_dict(),
         }   
-torch.save(model_dict, "classifier_cnn_v3_batch_{}_epoch_{}.pth".format(batch_size, n_epochs))
+torch.save(model_dict, "classifier_cnn_v3_batch_{}_epoch_{}_random_augment.pth".format(batch_size, n_epochs))
 print("Model saved.")

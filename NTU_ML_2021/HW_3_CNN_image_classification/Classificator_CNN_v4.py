@@ -30,10 +30,10 @@ run_in_background = False # make tqdm to be silent mode
 show_model_summary = False # Whether to print the model summary. You may set it to False if you don't want to see the model summary.
 allow_device = True  # Set to False if you want to force using CPU.
 use_pin_memory = True  # Set to True if you use GPU. False for CPU and MPS.
-n_epochs = 80 # The number of training epochs for classifier. 
+n_epochs = 160 # The number of training epochs for classifier. 
 do_semi = True # Whether to do semi-supervised learning.
 n_semi_redo = 5 # Redo pseudo labelling every n_semi_redo epochs
-n_threshold = 0 # Start to do semi-supervise after n_threshold epochs
+n_threshold = 60 # Start to do semi-supervise after n_threshold epochs
 # Batch size for training, validation, and testing.
 # A greater batch size usually gives a more stable gradient.
 # But the GPU memory is limited, so please adjust it carefully.
@@ -43,8 +43,8 @@ batch_size = 128
 num_workers = 8  # You may change this value based on your system configuration.
 file_path = "./project_data_food_11" # the location of the dataset
 
-use_pretrain_model = True # Load a pretrained model and use it as the initial condition of the classifier
-model_path = "./classifier_cnn_v3_batch_128_epoch_80.pth"
+use_pretrain_model = False # Load a pretrained model and use it as the initial condition of the classifier
+model_path = "./classifier_cnn_v3_batch_128_epoch_160_random_augment.pth"
 
 
 # It is important to do data augmentation in training.
@@ -55,6 +55,11 @@ train_tfm = transforms.Compose([
     transforms.Resize((128, 128)),
     # You may add some transforms here.
     # ToTensor() should be the last one of the transforms.
+        transforms.RandomChoice(
+        [transforms.AutoAugment(),
+        transforms.AutoAugment(transforms.AutoAugmentPolicy.CIFAR10),
+        transforms.AutoAugment(transforms.AutoAugmentPolicy.SVHN)]
+    ),
     transforms.RandomHorizontalFlip(0.5),
     transforms.RandomRotation(15),
     transforms.ToTensor(),
@@ -132,7 +137,7 @@ def get_pseudo_labels(dataset, model, device, threshold=0.8):
     pseudo_dataset = SubsetWithPseudoLabels(selected_subset, subset_pseudo_label)
     # Here, we randomly select len(train_set) data from the pseudo subset
     # Ensuring the number of pseudo samples is not higher than the number of labelled samples
-    perm = torch.randperm(len(pseudo_dataset))[:size_train_set]
+    perm = torch.randperm(len(pseudo_dataset))[:3*size_train_set]
     balanced_subset = Subset(pseudo_dataset, perm.tolist())
     
     print("Labelling is done!")
@@ -161,10 +166,13 @@ if use_pretrain_model:
     checkpoint = torch.load(model_path)
     model.load_state_dict(checkpoint["classifier_network"])
     model.to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.0003, weight_decay=1e-5)
+    optimizer.load_state_dict(checkpoint["classifier_optimizer"])
 else:
     # Initialize a model, and put it on the device specified.
     model = Deep_Classifier().to(device)
     model.device = device
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.0003, weight_decay=1e-5)
 
 if show_model_summary:
     print(model)
@@ -177,7 +185,7 @@ if show_model_summary:
 criterion = nn.CrossEntropyLoss()
 
 # Initialize optimizer, you may fine-tune some hyperparameters such as learning rate on your own.
-optimizer = torch.optim.Adam(model.parameters(), lr=0.0003, weight_decay=1e-5)
+# optimizer = torch.optim.Adam(model.parameters(), lr=0.0003, weight_decay=1e-5)
 
 # start time record
 start_time = time.time()
@@ -320,5 +328,5 @@ model_dict = {
             "classifier_network" : model.state_dict(),
             "classifier_optimizer" : optimizer.state_dict(),
         }   
-torch.save(model_dict, "classifier_cnn_v4_batch_{}_epoch_{}.pth".format(batch_size, n_epochs))
+torch.save(model_dict, "classifier_cnn_v4_batch_{}_epoch_{}_random_augment.pth".format(batch_size, n_epochs))
 print("Model saved.")
