@@ -16,5 +16,7 @@ project_data*
 *.o
 std*
 demo
+*.gz
+*.h5
 compile_private.sh
 compile_cuda_private.sh
