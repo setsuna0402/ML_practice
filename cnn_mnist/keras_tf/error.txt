@@ -1,0 +1,76 @@
+2020-05-06 15:55:13.103686: W tensorflow/stream_executor/platform/default/dso_loader.cc:55] Could not load dynamic library 'libnvinfer.so.6'; dlerror: libnvinfer.so.6: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: /work1/edward/private_library/anaconda3/lib:/software/openmpi/3.1.5-intel/lib:/software/hdf5/1.10.6/lib:/software/cuda/10.1/lib64:/software/valgrind/default/lib:/software/openmpi/default/lib:/software/intel/2020/compilers_and_libraries_2020.0.166/linux/compiler/lib/intel64_lin:/software/intel/2020/compilers_and_libraries_2020.0.166/linux/mpi/intel64/libfabric/lib:/software/intel/2020/compilers_and_libraries_2020.0.166/linux/mpi/intel64/lib/release:/software/intel/2020/compilers_and_libraries_2020.0.166/linux/mpi/intel64/lib:/software/intel/2020/compilers_and_libraries_2020.0.166/linux/ipp/lib/intel64:/software/intel/2020/compilers_and_libraries_2020.0.166/linux/compiler/lib/intel64_lin:/software/intel/2020/compilers_and_libraries_2020.0.166/linux/mkl/lib/intel64_lin:/software/intel/2020/compilers_and_libraries_2020.0.166/linux/tbb/lib/intel64/gcc4.8:/software/intel/2020/compilers_and_libraries_2020.0.166/linux/tbb/lib/intel64/gcc4.8:/software/intel/2020/debugger_2020/python/intel64/lib:/software/intel/2020/debugger_2020/libipt/intel64/lib:/software/intel/2020/compilers_and_libraries_2020.0.166/linux/daal/lib/intel64_lin:/software/intel/2020/compilers_and_libraries_2020.0.166/linux/daal/../tbb/lib/intel64_lin/gcc4.4:/software/intel/2020/compilers_and_libraries_2020.0.166/linux/daal/../tbb/lib/intel64_lin/gcc4.8:/software/hdf5/default/lib:/software/gsl/default/lib:/software/gnuplot/default/lib:/software/cuda/default/lib64
+2020-05-06 15:55:13.103915: W tensorflow/stream_executor/platform/default/dso_loader.cc:55] Could not load dynamic library 'libnvinfer_plugin.so.6'; dlerror: libnvinfer_plugin.so.6: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: /work1/edward/private_library/anaconda3/lib:/software/openmpi/3.1.5-intel/lib:/software/hdf5/1.10.6/lib:/software/cuda/10.1/lib64:/software/valgrind/default/lib:/software/openmpi/default/lib:/software/intel/2020/compilers_and_libraries_2020.0.166/linux/compiler/lib/intel64_lin:/software/intel/2020/compilers_and_libraries_2020.0.166/linux/mpi/intel64/libfabric/lib:/software/intel/2020/compilers_and_libraries_2020.0.166/linux/mpi/intel64/lib/release:/software/intel/2020/compilers_and_libraries_2020.0.166/linux/mpi/intel64/lib:/software/intel/2020/compilers_and_libraries_2020.0.166/linux/ipp/lib/intel64:/software/intel/2020/compilers_and_libraries_2020.0.166/linux/compiler/lib/intel64_lin:/software/intel/2020/compilers_and_libraries_2020.0.166/linux/mkl/lib/intel64_lin:/software/intel/2020/compilers_and_libraries_2020.0.166/linux/tbb/lib/intel64/gcc4.8:/software/intel/2020/compilers_and_libraries_2020.0.166/linux/tbb/lib/intel64/gcc4.8:/software/intel/2020/debugger_2020/python/intel64/lib:/software/intel/2020/debugger_2020/libipt/intel64/lib:/software/intel/2020/compilers_and_libraries_2020.0.166/linux/daal/lib/intel64_lin:/software/intel/2020/compilers_and_libraries_2020.0.166/linux/daal/../tbb/lib/intel64_lin/gcc4.4:/software/intel/2020/compilers_and_libraries_2020.0.166/linux/daal/../tbb/lib/intel64_lin/gcc4.8:/software/hdf5/default/lib:/software/gsl/default/lib:/software/gnuplot/default/lib:/software/cuda/default/lib64
+2020-05-06 15:55:13.103936: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:30] Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+2020-05-06 15:55:14.515709: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcuda.so.1
+2020-05-06 15:55:14.522298: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1555] Found device 0 with properties: 
+pciBusID: 0000:41:00.0 name: GeForce RTX 2080 SUPER computeCapability: 7.5
+coreClock: 1.86GHz coreCount: 48 deviceMemorySize: 7.79GiB deviceMemoryBandwidth: 462.00GiB/s
+2020-05-06 15:55:14.522801: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcudart.so.10.1
+2020-05-06 15:55:14.524643: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcublas.so.10
+2020-05-06 15:55:14.526641: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcufft.so.10
+2020-05-06 15:55:14.527083: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcurand.so.10
+2020-05-06 15:55:14.528794: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcusolver.so.10
+2020-05-06 15:55:14.529819: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcusparse.so.10
+2020-05-06 15:55:14.533878: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcudnn.so.7
+2020-05-06 15:55:14.535520: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1697] Adding visible gpu devices: 0
+2020-05-06 15:55:14.535967: I tensorflow/core/platform/cpu_feature_guard.cc:142] Your CPU supports instructions that this TensorFlow binary was not compiled to use: AVX2 FMA
+2020-05-06 15:55:14.547470: I tensorflow/core/platform/profile_utils/cpu_utils.cc:94] CPU Frequency: 3493180000 Hz
+2020-05-06 15:55:14.549024: I tensorflow/compiler/xla/service/service.cc:168] XLA service 0x5639791fd050 initialized for platform Host (this does not guarantee that XLA will be used). Devices:
+2020-05-06 15:55:14.549064: I tensorflow/compiler/xla/service/service.cc:176]   StreamExecutor device (0): Host, Default Version
+2020-05-06 15:55:14.674192: I tensorflow/compiler/xla/service/service.cc:168] XLA service 0x5639791ffc70 initialized for platform CUDA (this does not guarantee that XLA will be used). Devices:
+2020-05-06 15:55:14.674231: I tensorflow/compiler/xla/service/service.cc:176]   StreamExecutor device (0): GeForce RTX 2080 SUPER, Compute Capability 7.5
+2020-05-06 15:55:14.674951: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1555] Found device 0 with properties: 
+pciBusID: 0000:41:00.0 name: GeForce RTX 2080 SUPER computeCapability: 7.5
+coreClock: 1.86GHz coreCount: 48 deviceMemorySize: 7.79GiB deviceMemoryBandwidth: 462.00GiB/s
+2020-05-06 15:55:14.675008: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcudart.so.10.1
+2020-05-06 15:55:14.675026: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcublas.so.10
+2020-05-06 15:55:14.675041: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcufft.so.10
+2020-05-06 15:55:14.675055: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcurand.so.10
+2020-05-06 15:55:14.675069: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcusolver.so.10
+2020-05-06 15:55:14.675082: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcusparse.so.10
+2020-05-06 15:55:14.675096: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcudnn.so.7
+2020-05-06 15:55:14.676734: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1697] Adding visible gpu devices: 0
+2020-05-06 15:55:14.676788: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcudart.so.10.1
+2020-05-06 15:55:14.678390: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1096] Device interconnect StreamExecutor with strength 1 edge matrix:
+2020-05-06 15:55:14.678412: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1102]      0 
+2020-05-06 15:55:14.678425: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1115] 0:   N 
+2020-05-06 15:55:14.680081: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1241] Created TensorFlow device (/job:localhost/replica:0/task:0/device:GPU:0 with 7432 MB memory) -> physical GPU (device: 0, name: GeForce RTX 2080 SUPER, pci bus id: 0000:41:00.0, compute capability: 7.5)
+2020-05-06 15:55:15.337244: W tensorflow/core/framework/cpu_allocator_impl.cc:81] Allocation of 376320000 exceeds 10% of system memory.
+2020-05-06 15:55:15.865409: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcublas.so.10
+2020-05-06 15:55:16.053368: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcudnn.so.7
+2020-05-06 15:55:16.581665: E tensorflow/stream_executor/cuda/cuda_dnn.cc:329] Could not create cudnn handle: CUDNN_STATUS_INTERNAL_ERROR
+2020-05-06 15:55:16.591430: E tensorflow/stream_executor/cuda/cuda_dnn.cc:329] Could not create cudnn handle: CUDNN_STATUS_INTERNAL_ERROR
+2020-05-06 15:55:16.591563: W tensorflow/core/common_runtime/base_collective_executor.cc:217] BaseCollectiveExecutor::StartAbort Unknown: Failed to get convolution algorithm. This is probably because cuDNN failed to initialize, so try looking to see if a warning log message was printed above.
+	 [[{{node model/conv2d/Conv2D}}]]
+Traceback (most recent call last):
+  File "mnist_classificator_22_10.py", line 82, in <module>
+    Classificator.fit(train_image, one_hot_train, epochs=50, batch_size=200)
+  File "/work1/edward/private_library/anaconda3/envs/ML_tf2_py36/lib/python3.6/site-packages/tensorflow_core/python/keras/engine/training.py", line 819, in fit
+    use_multiprocessing=use_multiprocessing)
+  File "/work1/edward/private_library/anaconda3/envs/ML_tf2_py36/lib/python3.6/site-packages/tensorflow_core/python/keras/engine/training_v2.py", line 342, in fit
+    total_epochs=epochs)
+  File "/work1/edward/private_library/anaconda3/envs/ML_tf2_py36/lib/python3.6/site-packages/tensorflow_core/python/keras/engine/training_v2.py", line 128, in run_one_epoch
+    batch_outs = execution_function(iterator)
+  File "/work1/edward/private_library/anaconda3/envs/ML_tf2_py36/lib/python3.6/site-packages/tensorflow_core/python/keras/engine/training_v2_utils.py", line 98, in execution_function
+    distributed_function(input_fn))
+  File "/work1/edward/private_library/anaconda3/envs/ML_tf2_py36/lib/python3.6/site-packages/tensorflow_core/python/eager/def_function.py", line 568, in __call__
+    result = self._call(*args, **kwds)
+  File "/work1/edward/private_library/anaconda3/envs/ML_tf2_py36/lib/python3.6/site-packages/tensorflow_core/python/eager/def_function.py", line 632, in _call
+    return self._stateless_fn(*args, **kwds)
+  File "/work1/edward/private_library/anaconda3/envs/ML_tf2_py36/lib/python3.6/site-packages/tensorflow_core/python/eager/function.py", line 2363, in __call__
+    return graph_function._filtered_call(args, kwargs)  # pylint: disable=protected-access
+  File "/work1/edward/private_library/anaconda3/envs/ML_tf2_py36/lib/python3.6/site-packages/tensorflow_core/python/eager/function.py", line 1611, in _filtered_call
+    self.captured_inputs)
+  File "/work1/edward/private_library/anaconda3/envs/ML_tf2_py36/lib/python3.6/site-packages/tensorflow_core/python/eager/function.py", line 1692, in _call_flat
+    ctx, args, cancellation_manager=cancellation_manager))
+  File "/work1/edward/private_library/anaconda3/envs/ML_tf2_py36/lib/python3.6/site-packages/tensorflow_core/python/eager/function.py", line 545, in call
+    ctx=ctx)
+  File "/work1/edward/private_library/anaconda3/envs/ML_tf2_py36/lib/python3.6/site-packages/tensorflow_core/python/eager/execute.py", line 67, in quick_execute
+    six.raise_from(core._status_to_exception(e.code, message), None)
+  File "<string>", line 3, in raise_from
+tensorflow.python.framework.errors_impl.UnknownError:  Failed to get convolution algorithm. This is probably because cuDNN failed to initialize, so try looking to see if a warning log message was printed above.
+	 [[node model/conv2d/Conv2D (defined at mnist_classificator_22_10.py:82) ]] [Op:__inference_distributed_function_1579]
+
+Function call stack:
+distributed_function
+
