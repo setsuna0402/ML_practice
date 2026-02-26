@@ -35,11 +35,11 @@ from pathlib import Path
 from Load_Data_Module import *
 from Schedule_Module import get_cosine_schedule_with_warmup
 
-run_in_background = False # make tqdm to be silent mode
+run_in_background = True # make tqdm to be silent mode
 show_model_summary = False # Whether to print the model summary. You may set it to False if you don't want to see the model summary.
 allow_device = True  # Set to False if you want to force using CPU.
 use_pin_memory = True  # Set to True if you use GPU. False for CPU and MPS.
-n_total_step = 140000 # The total number of training steps. 
+n_total_step = 210000 # The total number of training steps. 
 n_valid_step = 2000 # The number of steps for validation. 
 n_warmup_step = 1000 # The number of steps for learning rate warmup.
 do_save_model = True # Whether to save the model during training. You may set it to False if you don't want to save the model.
@@ -66,11 +66,13 @@ class Classifier(nn.Module):
         # TODO:
         #   Change Transformer to Conformer.
         #   https://arxiv.org/abs/2005.08100
-        self.encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, dim_feedforward=256, nhead=2)
-        # self.encoder = nn.TransformerEncoder(self.encoder_layer, num_layers=2)
+        self.encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, dim_feedforward=256, nhead=1)
+        self.encoder = nn.TransformerEncoder(self.encoder_layer, num_layers=2)
 
         # Project the the dimension of features from d_model into speaker nums.
         self.pred_layer = nn.Sequential(
+            # nn.Linear(d_model, n_spks),
+            # nn.ReLU(),
             nn.Linear(d_model, d_model),
             nn.ReLU(),
             nn.Linear(d_model, n_spks),
@@ -88,7 +90,8 @@ class Classifier(nn.Module):
         # out: (length, batch size, d_model)
         out = out.permute(1, 0, 2)
         # The encoder layer expect features in the shape of (length, batch size, d_model).
-        out = self.encoder_layer(out)
+        # out = self.encoder_layer(out)
+        out = self.encoder(out)
         # out: (batch size, length, d_model)
         out = out.transpose(0, 1)
         # mean pooling
@@ -146,6 +149,9 @@ pbar = tqdm(total=n_valid_step, ncols=0, desc="Train", unit=" step", disable=run
 
 start_time = time.time()
 
+valid_steps = []
+valid_accs = []
+
 for step in range(n_total_step):
     # Get data
     try:
@@ -159,7 +165,7 @@ for step in range(n_total_step):
     mels, labels = batch
     # Transfer to device
     mels = mels.to(device)
-    labels = labels.to(device)
+    labels = labels.to(device).squeeze(1) # labels: (batch size, 1) -> (batch size,)
 
     # Calculate loss
     logits = model(mels) # sharp: [batch, speaker_num]
@@ -167,7 +173,7 @@ for step in range(n_total_step):
     batch_loss = loss.item() # loss is a tensor, loss.item() is a scalar detached from graph.
 
     # Pick the label with highest prob as the predicted label
-    pred_label = logits.argmax(1) # sharp: [batch, 1]
+    pred_label = logits.argmax(1) # sharp: [batch, speaker_num] -> pred_label: [batch,]
     # Compute accuracy
     acc = (pred_label == labels).float().mean()
     batch_acc = acc.item() # acc is a tensor, acc.item() is a scalar.
@@ -197,7 +203,7 @@ for step in range(n_total_step):
             for batch in tqdm(valid_loader, desc="Valid", ncols=0, unit=" batch", disable=run_in_background):
                 mels, labels = batch
                 mels = mels.to(device)
-                labels = labels.to(device)
+                labels = labels.to(device).squeeze(1)
                 logits = model(mels)
                 loss = criterion(logits, labels).item()
                 pred_label = logits.argmax(1)
@@ -206,7 +212,9 @@ for step in range(n_total_step):
                 valid_loss.append(loss)
         avg_valid_acc = sum(valid_acc) / len(valid_acc)
         avg_valid_loss = sum(valid_loss) / len(valid_loss)
-        print("Validation: Step: {} / {}, loss = {}, acc = {}".format(step + 1, n_total_step, avg_valid_loss, avg_valid_acc))
+        valid_accs.append(avg_valid_acc)
+        valid_steps.append(step + 1)
+        print("Validation: Step: {} / {}, loss = {:.5f}, acc = {:.5f}".format(step + 1, n_total_step, avg_valid_loss, avg_valid_acc))
         if best_accuracy < avg_valid_acc:
             print(f"New best validation accuracy: {avg_valid_acc:.5f} at step {step+1}")
             best_accuracy = avg_valid_acc
@@ -221,9 +229,16 @@ for step in range(n_total_step):
     # Save model
     if (step + 1) % n_save_step == 0 and do_save_model:
         if best_state_dict is not None:
-            torch.save(best_state_dict, f"specker_classifier_v1_step_{step+1}_acc_{best_accuracy:.5f}.pth")
-
+            torch.save(best_state_dict, f"specker_classifier_v1_two_layer_step_{step+1}_acc_{best_accuracy:.5f}_b.pth")
+pbar.close() 
 end_time = time.time()
 elapsed_time = end_time - start_time
 print("Training completed in {:.2f} mins.".format(elapsed_time / 60))
+print("Best validation accuracy: {:.5f}".format(best_accuracy))
 
+# Save accuracy curve
+plt.plot(valid_steps, valid_accs, 'b-', label="Validation")
+plt.xlabel("Step")
+plt.ylabel("Acc")
+plt.savefig("specker_classifier_v1_two_layer_total_step_{}_adamW_b.png".format(n_total_step))
+plt.close()
