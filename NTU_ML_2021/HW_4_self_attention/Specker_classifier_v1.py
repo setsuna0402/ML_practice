@@ -39,7 +39,7 @@ run_in_background = False # make tqdm to be silent mode
 show_model_summary = False # Whether to print the model summary. You may set it to False if you don't want to see the model summary.
 allow_device = True  # Set to False if you want to force using CPU.
 use_pin_memory = True  # Set to True if you use GPU. False for CPU and MPS.
-n_total_step = 70000 # The total number of training steps. 
+n_total_step = 140000 # The total number of training steps. 
 n_valid_step = 2000 # The number of steps for validation. 
 n_warmup_step = 1000 # The number of steps for learning rate warmup.
 do_save_model = True # Whether to save the model during training. You may set it to False if you don't want to save the model.
@@ -108,17 +108,32 @@ if allow_device:
     elif torch.backends.mps.is_available():
         device = torch.device("mps")
         print("Using MPS")
+        num_workers = 0 # MPS does not support multi-process data loading, so we set num_workers to 0.
+        use_pin_memory = False # MPS does not support pin_memory, so we set it to False.
     else:
         device = torch.device("cpu")
         print("Using CPU")
+        use_pin_memory = False
+        num_workers = 0 # You do not multiple process to move data when using CPU, so we set num_workers to 0.
 else:
     device = torch.device("cpu")
     print("Using CPU")
+    use_pin_memory = False
+    num_workers = 0 # You do not multiple process to move data when using CPU, so we set num_workers to 0.
 
 train_loader, valid_loader, speaker_num = get_dataloader(file_path, batch_size, num_workers, use_pin_memory, ratio_train)
 train_iterator = iter(train_loader)
-
 model = Classifier(n_spks=speaker_num).to(device)
+
+if show_model_summary:
+    batch = next(train_iterator)
+    mels, labels = batch
+    print(model)
+    summary(model, input_size=(1, 128, 40)) # Adjust input size to match the expected input of the model
+    print("Model summary shown. Please set 'show_model_summary' to False if you don't want to see the model summary.")
+    print("Input batch shape: (batch size, length, feature dimension) = {}".format(mels.shape))
+    print("Code execution stopped here. Please set 'show_model_summary' to False to continue.")
+    exit()
 criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
 scheduler = get_cosine_schedule_with_warmup(optimizer, n_warmup_step, n_total_step, num_cycles=0.5)
@@ -197,11 +212,11 @@ for step in range(n_total_step):
             best_accuracy = avg_valid_acc
         # Record the best model based on validation accuracy.
         if best_accuracy > save_threshold:
-            print("Step: {} / {}, best_valid_acc = {}, save_threshold = {}".format(step + 1, n_total_step, best_accuracy, save_threshold))
+            print("Step: {} / {}, best_valid_acc = {:.5f}, save_threshold = {:.5f}".format(step + 1, n_total_step, best_accuracy, save_threshold))
             best_accuracy = avg_valid_acc
             best_state_dict = model.state_dict()
             save_threshold = best_accuracy # Update the save threshold to the current best accuracy to save only better models in the future.
-            print("save_threshold update to {}".format(save_threshold))
+            print("save_threshold update to {:.5f}".format(save_threshold))
         pbar = tqdm(total=n_valid_step, ncols=0, desc="Train", unit=" step", disable=run_in_background)
     # Save model
     if (step + 1) % n_save_step == 0 and do_save_model:
