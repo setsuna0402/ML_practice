@@ -66,7 +66,8 @@ class SelfAttentivePooling_MultiHead(nn.Module):
         self.eps = eps
         self.attn = nn.Sequential(
             nn.Linear(d_model, hidden),
-            nn.Tanh(), # keep the value of attention score between -1 and 1 to stabilize training.
+            # nn.Tanh(), # keep the value of attention score between -1 and 1 to stabilize training.
+            nn.ReLU(),
             nn.Linear(hidden, num_head),
         )
 
