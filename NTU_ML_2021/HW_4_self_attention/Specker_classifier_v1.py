@@ -165,7 +165,7 @@ for step in range(n_total_step):
     mels, labels = batch
     # Transfer to device
     mels = mels.to(device)
-    labels = labels.to(device).squeeze(1) # labels: (batch size, 1) -> (batch size,)
+    labels = labels.to(device) # labels: (batch size,)
 
     # Calculate loss
     logits = model(mels) # sharp: [batch, speaker_num]
@@ -203,7 +203,7 @@ for step in range(n_total_step):
             for batch in tqdm(valid_loader, desc="Valid", ncols=0, unit=" batch", disable=run_in_background):
                 mels, labels = batch
                 mels = mels.to(device)
-                labels = labels.to(device).squeeze(1)
+                labels = labels.to(device)
                 logits = model(mels)
                 loss = criterion(logits, labels).item()
                 pred_label = logits.argmax(1)
@@ -229,7 +229,7 @@ for step in range(n_total_step):
     # Save model
     if (step + 1) % n_save_step == 0 and do_save_model:
         if best_state_dict is not None:
-            torch.save(best_state_dict, f"specker_classifier_v1_two_layer_step_{step+1}_acc_{best_accuracy:.5f}_b.pth")
+            torch.save(best_state_dict, f"specker_classifier_v1_two_layer_step_{step+1}_acc_{best_accuracy:.5f}.pth")
 pbar.close() 
 end_time = time.time()
 elapsed_time = end_time - start_time
@@ -240,5 +240,5 @@ print("Best validation accuracy: {:.5f}".format(best_accuracy))
 plt.plot(valid_steps, valid_accs, 'b-', label="Validation")
 plt.xlabel("Step")
 plt.ylabel("Acc")
-plt.savefig("specker_classifier_v1_two_layer_total_step_{}_adamW_b.png".format(n_total_step))
+plt.savefig("specker_classifier_v1_two_layer_total_step_{}_adamW.png".format(n_total_step))
 plt.close()

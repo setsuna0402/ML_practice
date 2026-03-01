@@ -36,21 +36,22 @@ from Load_Data_Module import *
 from Schedule_Module import get_cosine_schedule_with_warmup
 from Model_Class import Classifier_AMS, AMSoftmax
 
-run_in_background = True # make tqdm to be silent mode
+run_in_background = False # make tqdm to be silent mode
 show_model_summary = False # Whether to print the model summary. You may set it to False if you don't want to see the model summary.
 allow_device = True  # Set to False if you want to force using CPU.
 use_pin_memory = True  # Set to True if you use GPU. False for CPU and MPS.
-n_total_step = 70000 # The total number of training steps. 
+n_total_step = 140000 # The total number of training steps. 
 n_valid_step = 2000 # The number of steps for validation. 
-n_warmup_step = 1000 # The number of steps for learning rate warmup.
+n_warmup_step = 5000 # The number of steps for learning rate warmup.
 do_save_model = True # Whether to save the model during training. You may set it to False if you don't want to save the model.
 n_save_step = 10000 # The number of steps for saving the model. You may adjust it based on your needs.
 ratio_train = 0.9 # 90% of the dataset are allocated into training set. 10% of them go to validation set. 
-
+ams_m = 0.25 # Margin for AM-Softmax. You may adjust it based on your needs.
+ams_s = 30.0 # Scale for AM-Softmax. You may adjust it based on your needs.
 # Batch size for training, validation, and testing.
 # A greater batch size usually gives a more stable gradient.
 # But the GPU memory is limited, so please adjust it carefully.
-batch_size = 32
+batch_size = 48
 # 0 means only the main process will load data. Greater than 0 means number of subprocesses to use for data loading.
 # If you use cuda, you may set it to a greater value like 4 or 8 to accelerate data loading.
 num_workers = 8  # You may change this value based on your system configuration.
@@ -86,7 +87,7 @@ else:
 
 train_loader, valid_loader, speaker_num = get_dataloader(file_path, batch_size, num_workers, use_pin_memory, ratio_train)
 train_iterator = iter(train_loader)
-model = Classifier_AMS(n_spks=speaker_num).to(device)
+model = Classifier_AMS(n_spks=speaker_num, am_m=ams_m, am_s=ams_s).to(device)
 
 if show_model_summary:
     batch = next(train_iterator)
@@ -125,7 +126,7 @@ for step in range(n_total_step):
     mels, labels = batch
     # Transfer to device
     mels = mels.to(device)
-    labels = labels.to(device).squeeze(1)
+    labels = labels.to(device)
 
     # Calculate loss
     logits = model(mels, labels=labels) # sharp: [batch, speaker_num] labels!=None, so the margin in AM-Softmax is enabled.
@@ -163,7 +164,7 @@ for step in range(n_total_step):
             for batch in tqdm(valid_loader, desc="Valid", ncols=0, unit=" batch", disable=run_in_background):
                 mels, labels = batch
                 mels = mels.to(device)
-                labels = labels.to(device).squeeze(1)
+                labels = labels.to(device)
                 logits = model(mels, labels=None) # During validation, we set labels to None to disable the margin in AM-Softmax.
                 loss = criterion(logits, labels).item()
                 pred_label = logits.argmax(1)
@@ -189,7 +190,7 @@ for step in range(n_total_step):
     # Save model
     if (step + 1) % n_save_step == 0 and do_save_model:
         if best_state_dict is not None:
-            torch.save(best_state_dict, f"specker_classifier_v2_two_layer_step_{step+1}_acc_{best_accuracy:.5f}.pth")
+            torch.save(best_state_dict, f"specker_classifier_v2_three_layer_total_step_{n_total_step}_step_{step+1}_acc_{best_accuracy:.5f}_a.pth")
 pbar.close() 
 end_time = time.time()
 elapsed_time = end_time - start_time
@@ -200,5 +201,5 @@ print("Best validation accuracy: {:.5f}".format(best_accuracy))
 plt.plot(valid_steps, valid_accs, 'b-', label="Validation")
 plt.xlabel("Step")
 plt.ylabel("Acc")
-plt.savefig("specker_classifier_v2_two_layer_total_step_{}_adamW.png".format(n_total_step))
+plt.savefig("specker_classifier_v2_three_layer_total_step_{}_adamW_a.png".format(n_total_step))
 plt.close()
