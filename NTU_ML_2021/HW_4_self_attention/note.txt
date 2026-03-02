@@ -1,0 +1,20 @@
+v1 two   layer step 210000 0.80991
+v2 two   layer step 140000 (d_model 256, d_feedforward 1024) 0.88498
+v2 two   layer step 140000 (d_model 192, d_feedforward 768 ) 0.86849
+v2 three layer step 140000 (d_model 192, d_feedforward 768 ) 0.89280
+v3 one   layer step 140000 (d_model 128, d_feedforward 512 ) 0.91435
+v4 one   layer step 140000 (d_model 128, d_feedforward 512, kernel 15) 0.92679
+v4 two   layer step 140000 (d_model 128, d_feedforward 512, kernel 15) 0.94314
+v4 two   layer step 140000 (d_model 128, d_feedforward 512, kernel 7 ) 0.94358
+
+Best v3 Configuration:
+d_model 128, d_feedforward 512, 1 transformer layer, 5 heads, 64 hidden layers for SAP, 2048 input features for AM_SOFTMAX
+
+v1: Basic model provided by NTU course
+
+Note:
+This project is a practice for transformer and conformer. We test the performances of these NN structures on classification of specker identities. The default model (v1) passes the basic threshold (acc 0.8). 
+In v2, we implentment the addictive margin softmax (AMS), which is designed to concentrate the distribution of the data on the same class and make the margines between classes distinguished (seperating data belonged different classes). The improvement is is significant, the accuracy increases to 0.88 from 0.8 (medium baseline is 0.9). 
+In v3, we introduce the seft-attentive pooling (SAP) to replace the simple mean pooling. SAP also supports multiple-head pooling. When the number of head is one, its output is equivalent the weighted mean of the input. So, it is reasonable to say SAP actually provides mutiple weighted mean of the input, and the weights are determinated by the input itself and the attentive matrix. The performance is excellent. The accuracy of the v3 reachs 0.91 while the number of the transformer layers reduces from two to one. In fact, increasing the number of the transformer layers doesn't help in v3. In short, a nn with one layer of transformer plus AMS plus SAP works well in this task. (The accuracy is higher than the medium baselinf, 0.9).  
+In v4, we the transformer is replaced by the conformer. Transformer and conformer are very similar, but the conformer has additional convolution block. The additional convolution block helps the nn understand the local details, like CNN. It is worth to remember that the attention matrix used in transformer provide a learnable mechanism to find out the global correlation of the input, and the convolution layers adopted in image classification is strong at discovering the local features. Hence, the conformer has both strengths. The final accuracy of the conformer nn reachs 0.943, which is very close to the strong baseline (0.95). (PS, v4 seems to converge faster, comparing to v3.)   
+
