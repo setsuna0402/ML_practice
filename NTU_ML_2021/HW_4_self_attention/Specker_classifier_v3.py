@@ -193,7 +193,7 @@ for step in range(n_total_step):
     # Save model
     if (step + 1) % n_save_step == 0 and do_save_model:
         if best_state_dict is not None:
-            torch.save(best_state_dict, f"specker_classifier_v3_{n_transformer_layer}_layer_total_step_{n_total_step}_step_{step+1}_acc_{best_accuracy:.5f}_mulihead_sap.pth")
+            torch.save(best_state_dict, f"specker_classifier_v3_{n_transformer_layer}_layer_total_step_{n_total_step}_step_{step+1}_acc_{best_accuracy:.5f}_mulihead_sap_b.pth")
 pbar.close() 
 end_time = time.time()
 elapsed_time = end_time - start_time
@@ -204,6 +204,6 @@ print("Best validation accuracy: {:.5f}".format(best_accuracy))
 plt.plot(valid_steps, valid_accs, 'b-', label="Validation")
 plt.xlabel("Step")
 plt.ylabel("Acc")
-plt.savefig("specker_classifier_v3_{}_layer_total_step_{}_adamW_mulihead_sap.png".format(n_transformer_layer, n_total_step))
+plt.savefig("specker_classifier_v3_{}_layer_total_step_{}_adamW_mulihead_sap_b.png".format(n_transformer_layer, n_total_step))
 plt.close()
 print("May the force be with you!")
