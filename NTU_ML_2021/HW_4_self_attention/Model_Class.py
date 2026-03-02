@@ -8,6 +8,8 @@ import torch
 import torch.nn as nn
 import torchvision.models as models
 import torch.nn.functional as F
+import torchaudio
+from torchaudio.models import Conformer
 
 class AMSoftmax(nn.Module):
     """
@@ -284,6 +286,64 @@ class Classifier_AMS_SAP_MultiHead(nn.Module):
         out = self.encoder(out)
         # out: (batch size, length, d_model)
         out = out.transpose(0, 1)
+        # mean pooling
+        # stats: (batch size, d_model)
+        # stats = out.mean(dim=1)
+        stats, reg_scalar = self.sap_layer(out) # [B, H, D], scalar regularization term is also returned but we do not use it here.
+        stats = stats.reshape(stats.size(0), -1) # [B, H*D*2] flatten the last two dimensions (head and mean/std).
+        # emb: (batch, d_model)
+        emb = self.embed_layer(stats)
+        # out: (batch, n_spks)
+        out = self.am_head(emb, labels)
+        return out, reg_scalar
+
+
+class Classifier_Conformer_AMS_SAP_MultiHead(nn.Module):
+    def __init__(self, d_model: int = 128, n_spks: int = 600, dropout: float = 0.2, am_s: float = 30.0, am_m: float = 0.35, n_transformer_layer: int = 2, n_head: int = 4,
+                 kernel_size: int = 31):
+        super().__init__()
+        # Project the dimension of features from that of input into d_model.
+        self.prenet = nn.Linear(40, d_model)
+        # TODO:
+        #   Change Transformer to Conformer.
+        #   https://arxiv.org/abs/2005.08100
+        # Define comformer encoder layer and encoder here.
+        self.encoder = Conformer(input_dim=d_model, num_heads=1, num_layers=n_transformer_layer, ffn_dim=512, depthwise_conv_kernel_size=kernel_size, dropout=dropout)
+        # self.encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, dim_feedforward=512, nhead=1, dropout=dropout)
+        # self.encoder = nn.TransformerEncoder(self.encoder_layer, num_layers=n_transformer_layer)
+
+        # Project the the dimension of features from d_model into speaker nums.
+        self.embed_layer = nn.Sequential(
+            # nn.Linear(d_model, n_spks),
+            # nn.ReLU(),
+            nn.Linear(2 * n_head * d_model, 4096), # factor of two comes from std
+            nn.ReLU(),
+            # nn.BatchNorm1d(2048),
+            nn.Linear(4096, 2048), # factor of two comes from std
+            # nn.ReLU(),
+            nn.Dropout(dropout),
+        )
+
+        self.am_head = AMSoftmax(in_features=2048, num_classes=n_spks, s=am_s, m=am_m)
+        self.sap_layer = SelfAttentivePooling_MultiHead(d_model=d_model, num_head=n_head)
+
+    def forward(self, mels, labels=None):
+        """
+        args:
+        mels: (batch size, length, 40)
+        return:
+        out: (batch size, n_spks)
+        """
+        # out: (batch size, length, d_model)
+        out = self.prenet(mels)
+        # out: (length, batch size, d_model)
+        # out = out.permute(1, 0, 2) # For transformer. No need of conformer. Conformer expect input of shape (batch size, length, d_model).
+        # The encoder layer expect features in the shape of (length, batch size, d_model).
+        # out = self.encoder_layer(out)
+        lengths = torch.full((out.shape[0],), out.shape[1], dtype=torch.long, device=out.device)
+        out, _ = self.encoder(out, lengths=lengths) # conformer encoder expect input of shape (batch size, length, d_model).
+        # out: (batch size, length, d_model)
+        # out = out.transpose(0, 1) # For transformer. No need of conformer. Conformer expect input of shape (batch size, length, d_model).
         # mean pooling
         # stats: (batch size, d_model)
         # stats = out.mean(dim=1)
