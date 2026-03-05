@@ -1,0 +1,12 @@
+conda create -n pytorch_fairseq_py39 python=3.9
+pip3 install torch==2.8.0 torchvision==0.23.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cu128
+python -c "import torch; print(torch.cuda.is_available())"
+pip install cython
+python -m pip install "pip==24.0"
+pip install tensorboardX
+pip install editdistance matplotlib sacrebleu sacremoses sentencepiece tqdm wandb
+
+
+
+
+
