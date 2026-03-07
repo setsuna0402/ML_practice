@@ -2,7 +2,7 @@ This is a sequence to sequence model with transformer encoder and decoder.
 This work builds a English-to-Chinese word translator.
 Validation way: BLEU score with 1/2/3/4-gram precision.
 Training: Teacher forcing 
-B-search for influence (B width = 5)
+Beam-search for influence (Beam width = 5)
 ** hypothesis is the model predicted sentence. reference is the correct sentence.
 Example for n-gram:
 Original: 我喜歡貓咪
@@ -15,7 +15,7 @@ Meaning:
 2-gram checks phase and word collocation
 3-gram checks short/locat structure of the sentence
 4-gram checks sentence fluency/gramma/global meaning
-=> high n-gram precision => better grammar, phrase ordering and looks like the reference
+high n-gram precision => better grammar, phrase ordering and looks like the reference
 but the correct rate for high n-gram is unusally lower.
 ** BLEU score = BP * exp(1/N sum_{n=1}^{N}(log(p_n))), here p_n is the accuracy of the n-gram.
 ** n = 1 to 4 in this work.
