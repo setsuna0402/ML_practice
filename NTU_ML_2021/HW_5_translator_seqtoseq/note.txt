@@ -1,0 +1,33 @@
+This is a sequence to sequence model with transformer encoder and decoder.
+This work builds a English-to-Chinese word translator.
+Validation way: BLEU score with 1/2/3/4-gram precision.
+Training: Teacher forcing 
+B-search for influence (B width = 5)
+** hypothesis is the model predicted sentence. reference is the correct sentence.
+Example for n-gram:
+Original: 我喜歡貓咪
+1-gram: 我 喜 歡 貓 咪
+2-gram: 我喜 喜歡 歡貓 貓咪
+3-gram: 我喜歡 喜歡貓 歡貓咪
+4-gram: 我喜歡貓 喜歡貓咪
+Meaning: 
+1-gram checks whether the key words included in the hypothesis.
+2-gram checks phase and word collocation
+3-gram checks short/locat structure of the sentence
+4-gram checks sentence fluency/gramma/global meaning
+=> high n-gram precision => better grammar, phrase ordering and looks like the reference
+but the correct rate for high n-gram is unusally lower.
+** BLEU score = BP * exp(1/N sum_{n=1}^{N}(log(p_n))), here p_n is the accuracy of the n-gram.
+** n = 1 to 4 in this work.
+** BP = 1 if c>=r else exp(1 - r/c) here r is the length of reference and c is the length of generated translation
+
+The BLEU score of the trained model (30 epoch): about 23
+
+Possible improvement way: introduce back-translation to increase the amount of paired data.
+Like, training a Chinese-to-English model, then translate Chinese data to English, finally combining these data to the ted data and using the combined dataset to train the eng-to-zh translator.
+
+The idea is straightforward. I will try it if I have more GPU resources.
+The training time for the current model is about three-hours, using GPU server in ROE...
+It is possible to spend one-day to train the back-translation model once since its structure is expected to be bigger. 
+
+  

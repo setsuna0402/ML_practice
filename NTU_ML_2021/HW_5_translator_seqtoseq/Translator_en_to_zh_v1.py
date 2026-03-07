@@ -69,7 +69,7 @@ config = Namespace(
     clip_norm=1.0,
 
     # maximum epochs for training
-    max_epoch=1,
+    max_epoch=30,
     start_epoch=1,
 
     # beam size for beam search
@@ -254,24 +254,20 @@ class Seq2Seq(FairseqEncoderDecoderModel):
         return logits, extra
 
 def build_model(args, task):
-    """ 按照參數設定建置模型 """
     src_dict, tgt_dict = task.source_dictionary, task.target_dictionary
 
-    # 詞嵌入
+    # Word embedding for encoder and decoder. The embedding layer converts the input token ids into dense vectors.
     encoder_embed_tokens = nn.Embedding(len(src_dict), args.encoder_embed_dim, src_dict.pad())
     decoder_embed_tokens = nn.Embedding(len(tgt_dict), args.decoder_embed_dim, tgt_dict.pad())
 
-    # 編碼器與解碼器
-    # TODO: 替換成 TransformerEncoder 和 TransformerDecoder
-    # encoder = RNNEncoder(args, src_dict, encoder_embed_tokens)
-    # decoder = RNNDecoder(args, tgt_dict, decoder_embed_tokens)
+    # Transformer encoder and decoder.
     encoder = TransformerEncoder(args, src_dict, encoder_embed_tokens)
     decoder = TransformerDecoder(args, tgt_dict, decoder_embed_tokens)
 
-    # 序列到序列模型
+    # sequence to sequence model
     model = Seq2Seq(args, encoder, decoder)
 
-    # 序列到序列模型的初始化很重要 需要特別處理
+    # initialize the model parameters. You can use other initialization methods if you like.
     def init_params(module):
         from fairseq.modules import MultiheadAttention
         if isinstance(module, nn.Linear):
@@ -291,7 +287,7 @@ def build_model(args, task):
                 if "weight" in name or "bias" in name:
                     param.data.uniform_(-0.1, 0.1)
 
-    # 初始化模型
+    # initialize the model parameters. You can use other initialization methods if you like.
     model.apply(init_params)
     return model
 
@@ -312,6 +308,7 @@ class NoamOpt:
         self.model_size = model_size
         self._rate = 0
 
+    # property is a python decorator that allows you to access the method like an attribute. For example, you can use optimizer.param_groups instead of optimizer.param_groups().
     @property
     def param_groups(self):
         return self.optimizer.param_groups
@@ -474,17 +471,14 @@ def validate(model, task, criterion, seq_generator):
     with torch.no_grad():
         for i, sample in enumerate(progress):
             sample_size = sample["ntokens"]
+            # sample is a dictionary containing the batch data, including "net_input" and "target".
+            # move_to_device moves the batch data to the appropriate device. It can handle tensors, dicts, lists and tuples.
+            # since sample is a dictinoary, move_to_device will recursively move all tensors in the dictionary to the appropriate device.
             sample = move_to_device(sample, device)
-            # net = sample["net_input"]
-            # validation loss
-            # src_tokens = net["src_tokens"].to(device)
-            # src_lengths = net["src_lengths"].to(device)
-            # prev_output_tokens = net["prev_output_tokens"].to(device)
-            # target = sample["target"].to(device)
             # forward pass
-            logits, extra =  model.forward(**sample["net_input"])
+            logits, extra =  model.forward(**sample["net_input"]) # type: ignore
             number_of_tokens.append(sample_size)
-            loss = criterion(logits.reshape(-1, logits.size(-1)), sample["target"].reshape(-1))
+            loss = criterion(logits.reshape(-1, logits.size(-1)), sample["target"].reshape(-1)) # type: ignore
             progress.set_postfix(valid_loss=loss.item())
             stats["loss"].append(loss.item() * sample_size)  # total loss for all tokens in this batch
 
@@ -537,7 +531,7 @@ def validate_and_save(model, task, criterion, optimizer, epoch, seq_generator, s
 
         # get best valid bleu
         if getattr(validate_and_save, "best_bleu", 0) < bleu.score:
-            validate_and_save.best_bleu = bleu.score
+            validate_and_save.best_bleu = bleu.score # type: ignore python trick to add a static variable to the function
             torch.save(check, savedir/f"checkpoint_best.pt")
 
         del_file = savedir / f"checkpoint{epoch - config.keep_last_epochs}.pt"
@@ -604,6 +598,6 @@ try_load_checkpoint(model, optimizer, name=config.resume)
 while epoch_itr.next_epoch_idx <= config.max_epoch:
     # train for one epoch
     train_one_epoch(epoch_itr, model, task, criterion, optimizer, config, device=device)
-    stats = validate_and_save(model, task, criterion, optimizer, epoch=epoch_itr.epoch, seq_generator=sequence_generator, save=False)
+    stats = validate_and_save(model, task, criterion, optimizer, epoch=epoch_itr.epoch, seq_generator=sequence_generator, save=True)
     logger.info("end of epoch {}".format(epoch_itr.epoch))
     epoch_itr = load_data_iterator(task, "train", epoch_itr.next_epoch_idx, config.max_tokens, config.num_workers)
