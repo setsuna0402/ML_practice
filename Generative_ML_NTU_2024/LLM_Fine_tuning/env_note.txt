@@ -1,0 +1,9 @@
+conda create --name pytorch_llm_py311 python=3.11
+conda activate pytorch_llm_py311
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+pip install transformers==4.41.0 peft==0.9.0 sentencepiece==0.1.99
+pip install colorama==0.4.6 fsspec==2023.9.2 datasets==4.7.0
+pip install -U accelerate==0.28.0 huggingface_hub==0.36.2 bitsandbytes==0.49.2
+
+
+
