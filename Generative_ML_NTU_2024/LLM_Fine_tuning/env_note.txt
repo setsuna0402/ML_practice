@@ -4,6 +4,6 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 pip install transformers==4.41.0 peft==0.9.0 sentencepiece==0.1.99
 pip install colorama==0.4.6 fsspec==2023.9.2 datasets==4.7.0
 pip install -U accelerate==0.28.0 huggingface_hub==0.36.2 bitsandbytes==0.49.2
-
+pip install einops timm
 
 

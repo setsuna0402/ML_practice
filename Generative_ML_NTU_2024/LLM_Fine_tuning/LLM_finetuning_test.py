@@ -39,6 +39,7 @@ from peft import (
 
 # model_name = "taide/TAIDE-LX-7B-Chat" # Name of the model you want to use. 
 model_name = "Qwen/Qwen2.5-3B-Instruct"
+# model_name = "MediaTek-Research/Llama-Breeze2-3B-Instruct"
 
 """## Fix Random Seeds
 There may be some randomness involved in the fine-tuning process. We fix random seeds to make the result reproducible.
@@ -51,6 +52,7 @@ torch.manual_seed(seed)
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(seed)
 
+# This is desigened for QWEN2.5-3B-Instruct.
 def generate_training_data(data_point):
     """
     (1) Goal:
@@ -61,96 +63,109 @@ def generate_training_data(data_point):
 
     (3) Returns:
         - a dict with model's input tokens, attention mask that make our model causal, and corresponding output targets
-
-    (3) Example:
-        - If you construct a dict, data_point_1, with field "instruction", "input", and "output" which are all str, you can use the function like this:
-            formulate_article(data_point_1)
-
+    Note: This is designed for Qwen2.5-3B-Instruct and is different than the NTU template which is designed for taide/TAIDE-LX-7B-Chat
     """
-    # construct full input prompt
-    # prompt has three parts: system instruction, user instruction, and user input.
-    prompt = f"""\
-        [INST] <<SYS>>
-        You are a helpful assistant and good at writing Tang poem. 你是一個樂於助人的助手且擅長寫唐詩。
-        <</SYS>>
-
-        {data_point["instruction"]}
-        {data_point["input"]}
-        [/INST]"""
-    # count the number of input tokens
-    len_user_prompt_tokens = (
-        len(
-            tokenizer(
-                prompt,
-                truncation=True,
-                max_length=CUTOFF_LEN + 1,
-                padding="max_length",
-            )["input_ids"]
-        ) - 1
+    system_prompt = (
+        # "You are a helpful assistant and good at writing Tang poem. "
+        "你是一個樂於助人的助手且擅長寫唐詩，一切對話都是用繁體中文進行的。"
     )
-    # transform input prompt into tokens
-    full_tokens = tokenizer(
-        prompt + " " + data_point["output"] + "</s>",
+
+    user_prompt = f'{data_point["instruction"]}\n{data_point["input"]}'.strip()
+    assistant_text = data_point["output"].strip() # For fine tuning
+
+    # Prompt without assistant answer: used to count how many tokens to mask
+    prompt_messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+    prompt_text = tokenizer.apply_chat_template(
+        prompt_messages,
+        tokenize=False,
+        add_generation_prompt=True,   # leaves the prompt ready for assistant response
+    )
+
+    # Full conversation including target answer
+    full_messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+        {"role": "assistant", "content": assistant_text},
+    ]
+    full_text = tokenizer.apply_chat_template(
+        full_messages,
+        tokenize=False,
+        add_generation_prompt=False,
+    )
+
+    prompt_ids = tokenizer(
+        prompt_text,
         truncation=True,
         max_length=CUTOFF_LEN + 1,
         padding="max_length",
     )["input_ids"][:-1]
+
+    full_tokens = tokenizer(
+        full_text,
+        truncation=True,
+        max_length=CUTOFF_LEN + 1,
+        padding="max_length",
+    )["input_ids"][:-1]
+
+    len_prompt_tokens = len(prompt_ids)
+
+    labels = [-100] * len_prompt_tokens + full_tokens[len_prompt_tokens:]
+
+    # Keep labels same length as input_ids
+    # labels = labels[: len(full_tokens)]
+
     return {
         "input_ids": full_tokens,
-        "labels": [-100] * len_user_prompt_tokens
-        + full_tokens[len_user_prompt_tokens:],
-        "attention_mask": [1] * (len(full_tokens)),
+        "labels": labels,
+        "attention_mask": [1] * len(full_tokens),
     }
 
-
+# This is desigened for QWEN2.5-3B-Instruct.
 def evaluate(instruction, generation_config, max_len, input="", verbose=True):
     """
-    (1) Goal:
-        - This function is used to get the model's output given input strings
-
-    (2) Arguments:
-        - instruction: str, description of what you want model to do
-        - generation_config: transformers.GenerationConfig object, to specify decoding parameters relating to model inference
-        - max_len: int, max length of model's output
-        - input: str, input string the model needs to solve the instruction, default is "" (no input)
-        - verbose: bool, whether to print the mode's output, default is True
-
-    (3) Returns:
-        - output: str, the mode's response according to the instruction and the input
-
-    (3) Example:
-        - If you the instruction is "ABC" and the input is "DEF" and you want model to give an answer under 128 tokens, you can use the function like this:
-            evaluate(instruction="ABC", generation_config=generation_config, max_len=128, input="DEF")
-
+    Generate a response with Qwen2.5-Instruct chat template.
     """
-    # construct full input prompt
-    prompt = f"""\
-        [INST] <<SYS>>
-        You are a helpful assistant and good at writing Tang poem. 你是一個樂於助人的助手且擅長寫唐詩。
-        <</SYS>>
+    system_prompt = (
+        # "You are a helpful assistant and good at writing Tang poem. "
+        "你是一個樂於助人的助手且擅長寫唐詩，一切對話都是用繁體中文進行的。"
+    )
 
-        {instruction}
-        {input}
-        [/INST]"""
-    # 將提示文本轉換為模型所需的數字表示形式
-    inputs = tokenizer(prompt, return_tensors="pt")
-    input_ids = inputs["input_ids"].cuda()
-    # 使用模型進行生成回覆
+    user_prompt = f"{instruction}\n{input}".strip()
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+
+    inputs = tokenizer.apply_chat_template(
+        messages,
+        tokenize=True,
+        add_generation_prompt=True,
+        return_tensors="pt",
+    ).to(model.device)
+
     generation_output = model.generate(
-        input_ids=input_ids,
+        input_ids=inputs,
         generation_config=generation_config,
         return_dict_in_generate=True,
         output_scores=True,
         max_new_tokens=max_len,
     ) # type: ignore
-    # 將生成的回覆解碼並印出
-    for s in generation_output.sequences:
-        output = tokenizer.decode(s)
-        output = output.split("[/INST]")[1].replace("</s>", "").replace("<s>", "").replace("Assistant:", "").replace("Assistant", "").strip()
-        if (verbose):
-            print(output)
+
+    # Only decode newly generated tokens
+    # sequences: (batch_size, input_length + generated_length)
+    # So, [0] is for the first sample. The shape is (input_length + generated_length)
+    generated_ids = generation_output.sequences[0][inputs.shape[-1]:]
+    output = tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
+
+    if verbose:
+        print(output)
 
     return output
+
 
 
 """## Inference before Fine-tuning
@@ -171,18 +186,18 @@ nf4_config = BitsAndBytesConfig(
    bnb_4bit_compute_dtype=torch.bfloat16
 )
 from huggingface_hub import login
-login() # Some models, like Taide, requires access to use.
+# login() # Some models, like Taide, requires access to use.
 
 # Set Hyperarameters for Fine-tuning
 
-num_train_data = 1040 # 設定用來訓練的資料數量，可設置的最大值為5000。在大部分情況下會希望訓練資料盡量越多越好，這會讓模型看過更多樣化的詩句，進而提升生成品質，但是也會增加訓練的時間
+num_train_data = 4096 # 設定用來訓練的資料數量，可設置的最大值為5000。在大部分情況下會希望訓練資料盡量越多越好，這會讓模型看過更多樣化的詩句，進而提升生成品質，但是也會增加訓練的時間
                       # 使用預設參數(1040): fine-tuning大約需要25分鐘，完整跑完所有cell大約需要50分鐘
                       # 使用最大值(5000): fine-tuning大約需要100分鐘，完整跑完所有cell大約需要120分鐘
 
 """ You may want (but not necessarily need) to change some of these hyperparameters """
 
 output_dir = "./trained_result"  # 設定作業結果輸出目錄 (如果想要把作業結果存在其他目錄底下可以修改這裡，強烈建議存在預設值的子目錄下，也就是Google Drive裡)
-ckpt_dir = "./exp1" # 設定model checkpoint儲存目錄 (如果想要將model checkpoints存在其他目錄下可以修改這裡)
+ckpt_dir = "./exp2" # 設定model checkpoint儲存目錄 (如果想要將model checkpoints存在其他目錄下可以修改這裡)
 num_epoch = 1  # 設定訓練的總Epoch數 (數字越高，訓練越久，若使用免費版的colab需要注意訓練太久可能會斷線)
 LEARNING_RATE = 3e-4  # 設定學習率
 
@@ -243,7 +258,7 @@ for (i, ckpt) in enumerate(ckpts):
 
 """ You may want (but not necessarily need) to change the check point """
 
-id_of_ckpt_to_use = -1  # 要用來進行推理的checkpoint的id(對應上一個cell的輸出結果)
+id_of_ckpt_to_use = 2  # 要用來進行推理的checkpoint的id(對應上一個cell的輸出結果)
                         # 預設值-1指的是上列checkpoints中的"倒數"第一個，也就是最後一個checkpoint
                         # 如果想要選擇其他checkpoint，可以把-1改成有列出的checkpoint id中的其中一個
 
@@ -251,8 +266,8 @@ ckpt_name = os.path.join(ckpt_dir, ckpts[id_of_ckpt_to_use])
 
 """ You may want (but not necessarily need) to change decoding parameters """
 # 你可以在這裡調整decoding parameter，decoding parameter的詳細解釋請見homework slides
-max_len = 128   # 生成回復的最大長度
-temperature = 0.1  # 設定生成回覆的隨機度，值越小生成的回覆越穩定
+max_len = 512   # 生成回復的最大長度
+temperature = 0.5  # 設定生成回覆的隨機度，值越小生成的回覆越穩定
 top_p = 0.3  # Top-p (nucleus) 抽樣的機率閾值，用於控制生成回覆的多樣性
 # top_k = 5 # 調整Top-k值，以增加生成回覆的多樣性和避免生成重複的詞彙
 
@@ -260,7 +275,7 @@ top_p = 0.3  # Top-p (nucleus) 抽樣的機率閾值，用於控制生成回覆�
 
 """ It is recommmended NOT to change codes in this cell """
 
-test_data_path = "GenAI-Hw5/Tang_testing_data.json"
+test_data_path = "./project_data_main/Tang_testing_data.json"
 output_path = os.path.join(output_dir, "results.txt")
 
 cache_dir = "./cache"  # 設定快取目錄路徑

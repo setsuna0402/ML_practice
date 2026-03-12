@@ -1,0 +1,12 @@
+This project is a implementation of LLM's fine tuning.
+We adopt Qwen2.5-3B model as the pretrained model, 
+and use Low-Rank Adaptation (LoRA) method to train a Chinese poem writter.
+To achieve this with the limited computation instrucment (one RTX 3060 Ti),
+we use 4-bit quantization method with NF4 format to represent the pretrained model, 
+while all caculation is done in bf16. Also, we switch to Qwen2.5-3B model from TAIDE-LX-7B-Chat, which is used in the NTU example code.
+The results look OK even the number of parameters of Qwen2.5 is only half of TAIDE-LX-7B-Chat.
+(Please be aware that I am a PhD in physics, not literary.)
+At least the format of most of the results is consistent and the poem is fluent. 
+
+These results show that my understanding on fine tuning is correct and the customized input-output functions (generate_training_data and evaluate) which are designed for Qwen2.5 work correctly.
+
