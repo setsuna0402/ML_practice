@@ -37,7 +37,8 @@ from peft import (
     prepare_model_for_kbit_training
 )
 
-model_name = "taide/TAIDE-LX-7B-Chat" # Name of the model you want to use. 
+# model_name = "taide/TAIDE-LX-7B-Chat" # Name of the model you want to use. 
+model_name = "Qwen/Qwen2.5-3B-Instruct"
 
 """## Fix Random Seeds
 There may be some randomness involved in the fine-tuning process. We fix random seeds to make the result reproducible.
