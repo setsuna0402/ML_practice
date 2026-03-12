@@ -18,5 +18,6 @@ std*
 demo
 *.gz
 *.h5
+cache
 compile_private.sh
 compile_cuda_private.sh
