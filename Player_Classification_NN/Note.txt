@@ -1,0 +1,19 @@
+This project are designed to explore Predict Online Gaming Behavior Dataset by deep learning method.
+The mission is to classify players into three categories: "Low", "Medium", and "High" engagement levels based on their gaming behavior and demographics.
+Since the data is not complex, the architecture of the neural network is simple, a fully connected feedforward neural network with 3 hidden layers. 
+The whole project are composed of three main parts: data preprocessing, model definition and training, and feature ablation analysis.
+
+In data preprocessing, we check the integrity of the data, one-hot encode categorical features, normalize numerical features, 
+and split the data into training and testing sets. We also drop some features that are irrelevant.
+
+In model definition and training, we define a simple feedforward neural network, ReLU activation functions, batch normalization, and dropout for regularization.
+We use the AdamW optimizer and CrossEntropyLoss with softlabelling for training. We also implement a training loop that includes validation after each epoch.
+After training, we evaluate the model on the test set and report the accuracy as wekk as the confusion matrix.
+
+In feature ablation analysis, we identify the key features. 
+We systematically remove one or multiple features from the dataset and retrain the model to observe how the performance changes.
+We find that removing "PlayTimeHours" and "SessionsPerWeek" significantly reduces the model's performance, indicating that these features are crucial for predicting player engagement levels.
+
+Validation accuracy is around 0.91 for the full feature set, but drops to around 0.5 when "PlayTimeHours" and "SessionsPerWeek" are removed, 
+confirming their importance in the model's predictions.
+
