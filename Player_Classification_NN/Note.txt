@@ -17,3 +17,5 @@ We find that removing "PlayTimeHours" and "SessionsPerWeek" significantly reduce
 Validation accuracy is around 0.91 for the full feature set, but drops to around 0.5 when "PlayTimeHours" and "SessionsPerWeek" are removed, 
 confirming their importance in the model's predictions.
 
+
+Data source: https://www.kaggle.com/datasets/rabieelkharoua/predict-online-gaming-behavior-dataset/data
