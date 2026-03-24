@@ -175,13 +175,13 @@ else:
 
 if use_pretrain_model:
     # Load the pretrained classifier
-    model = Classifier_Resnet18()
+    model = Classifier_Resnet34()
     checkpoint = torch.load(model_path)
     model.load_state_dict(checkpoint["classifier_network"])
     model.to(device)
 else:
     # Initialize a model, and put it on the device specified.
-    model = Classifier_Resnet18().to(device)
+    model = Classifier_Resnet34().to(device)
     model.device = device
 
 if show_model_summary:
@@ -199,13 +199,17 @@ if do_cutmix:
     cutmix = v2.CutMix(alpha=cutmix_alpha, num_classes=11)
 
 # Initialize optimizer, you may fine-tune some hyperparameters such as learning rate on your own.
-optimizer = torch.optim.AdamW(model.parameters(), lr=0.00003, weight_decay=1e-3)
-# optimizer = torch.optim.SGD(model.parameters(), lr=0.03, momentum=0.9, weight_decay=1e-3) # Resnet is deep. Use SGD to accelerate the training process
+optimizer_a = torch.optim.AdamW(model.parameters(), lr=0.00003, weight_decay=1e-3)
+optimizer_b = torch.optim.SGD(model.parameters(), lr=0.00003, momentum=0.9, weight_decay=1e-3) # Resnet is deep. Use SGD to accelerate the training process
 # This is for SGD. Dynamically decay the lr. 
-# scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=n_epochs)
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer_b, T_max=n_epochs)
+
+switch_epoch = 60  # use a for epochs 0~59, b from epoch 60 onward
 
 # Record validation accuracy across epochs
 valid_acc_epoch = []
+
+best_valid_acc = -1.0 # This is used to save the best model during training.
 
 # start time record
 start_time = time.time()
@@ -215,7 +219,7 @@ for epoch in range(n_epochs):
     # Then you can combine the labeled dataset and pseudo-labeled dataset for the training.
     if do_semi and (epoch % n_semi_redo == 0) and (epoch >= n_threshold):
         # Obtain pseudo-labels for unlabeled data using trained model.
-        pseudo_set = get_pseudo_labels(unlabeled_set_pseudo, unlabeled_set, model, device)
+        pseudo_set = get_pseudo_labels(unlabeled_set_pseudo, unlabeled_set, model, device, threshold=0.8)
 
         # Construct a new dataset and a data loader for training.
         # This is used in semi-supervised learning only.
@@ -225,6 +229,12 @@ for epoch in range(n_epochs):
     # ---------- Training ----------
     # Make sure the model is in train mode before training.
     model.train()
+
+    # choose optimizer
+    if epoch < switch_epoch:
+        optimizer = optimizer_a
+    else:
+        optimizer = optimizer_b
 
     # These are used to record information in training.
     train_loss = []
@@ -315,7 +325,7 @@ for epoch in range(n_epochs):
         valid_loss.append(loss.item())
         valid_accs.append(acc.item())
 
-    # scheduler.step() # update learning rate
+    scheduler.step() # update learning rate
     current_lr = optimizer.param_groups[0]["lr"]
 
     # The average loss and accuracy for entire validation set is the average of the recorded values.
@@ -323,7 +333,19 @@ for epoch in range(n_epochs):
     valid_acc = sum(valid_accs) / len(valid_accs)
     valid_acc_epoch.append(valid_acc)
     # Print the information.
-    print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}, lr = {current_lr:.5f}")
+    print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}, lr = {current_lr:.8f}")
+    if valid_acc > best_valid_acc and epoch >= 80: # Save the model with best validation accuracy after epoch 80. 
+        best_valid_acc = valid_acc
+        model.eval()
+        model.to(torch.device("cpu"))  # Move the model to CPU before saving.
+        # Mark the best model
+        model_dict = { 
+            "classifier_network" : model.state_dict(),
+            "classifier_optimizer" : optimizer.state_dict(),
+        }   
+        torch.save(model_dict, "classifier_cnn_v7_batch_{}_epoch_{}_CutMiX_semi_supervised_AdamW_SGD_Resnet34.pth".format(batch_size, epoch))
+        model.to(device)  # Move the model back to the original device after saving.
+        model.train() # Set the model back to train mode after saving.
 
 # ---------- Validation ----------
 # Make sure the model is in eval mode so that some modules like dropout are disabled and work normally.
@@ -371,7 +393,7 @@ valid_acc_epoch = np.array(valid_acc_epoch)
 plt.plot(np.arange(n_epochs), valid_acc_epoch, "b-", label="Validation")
 plt.xlabel("Epoch")
 plt.ylabel("Accuracy")
-plt.savefig("classifier_v7_accuracy_batch_{}_epoch_{}_CutMiX_semi_supervised_AdamW.png".format(batch_size, n_epochs))
+plt.savefig("classifier_v7_accuracy_batch_{}_epoch_{}_CutMiX_semi_supervised_AdamW_SGD_Resnet34.png".format(batch_size, n_epochs))
 plt.close()
 
 
@@ -382,7 +404,8 @@ model_dict = {
             "classifier_network" : model.state_dict(),
             "classifier_optimizer" : optimizer.state_dict(),
         }   
-# torch.save(model_dict, "classifier_cnn_v5_batch_{}_epoch_{}_semi_supervised_adamW_b.pth".format(batch_size, n_epochs))
-# torch.save(model_dict, "classifier_cnn_v5_batch_{}_epoch_{}_mixup_semi_supervised_SGD_low_threshold.pth".format(batch_size, n_epochs))
-torch.save(model_dict, "classifier_cnn_v7_batch_{}_epoch_{}_CutMiX_semi_supervised_AdamW.pth".format(batch_size, n_epochs))
+# torch.save(model_dict, "classifier_cnn_v7_batch_{}_epoch_{}_semi_supervised_adamW.pth".format(batch_size, n_epochs))
+# torch.save(model_dict, "classifier_cnn_v7_batch_{}_epoch_{}_mixup_semi_supervised_SGD_low_threshold.pth".format(batch_size, n_epochs))
+# torch.save(model_dict, "classifier_cnn_v7_batch_{}_epoch_{}_CutMiX_semi_supervised_AdamW.pth".format(batch_size, n_epochs))
+torch.save(model_dict, "classifier_cnn_v7_batch_{}_epoch_{}_CutMiX_semi_supervised_AdamW_SGD_Resnet34.pth".format(batch_size, n_epochs))
 print("Model saved.")

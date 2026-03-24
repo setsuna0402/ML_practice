@@ -8,13 +8,25 @@ acc v5: supervised SGD 0.60677 (epoch 120)
 acc v5: supervised SGD 0.65729 (epoch 240)
 acc v5: semi-supervised SGD 0.66146 (epoch 240)
 acc v6: semi-supervised + AdamW + CutMix 0.7924
+acc v7: semi-supervised + AdamW + CutMix + pretrained Resnet34 0.8742
+
 Summary:
-V1 with Good image augmentation, like Random Crop, Horizontal Flip Rotation, Color Jitter, Normalisation, can pass the medium baseline (0.52). In the last verision of v1, the accuracy for validation set reach 0.6, using CutMix method.
+V1: with Good image augmentation, like Random Crop, Horizontal Flip Rotation, Color Jitter, Normalisation, can pass the medium baseline (0.52).
+    In the last verision of v1, the accuracy for validation set reach 0.6, using CutMix method.
 v2: Pretrained auto-encoder + classifier. It is the worst case. This result matchs the current trend: no one use auto-encoder now.
 v3: Joint encoder and classifier. The encoder and classifier train together.
-v4 involves semi-supervised learning, using the same network structure as v3. However, the accuracies of v3 and v4 are on the same level.
-v5: Since I don't know whether the bottleneck of accuarcy is caused by image augmentation or the network structure, I adopt the Resnet18 network without pretraining to ensure the network is capable to classify the objects. It turns out that the implementation of Resnet18 doesn't improve the accuracy a lot. After that, I try various optimizers (SGD, Adam, AdamW) and schedulers. However, none of them can siginificantly affect the accuracy. Finally, I try MixUp and CutMix methods (independently). MixUp Method doesn't help, even makes the accuracy worse. CutMix method is very effective. Using CutMix + AdamW + semi-supervised learning + Cosine scheduler + Resnet18, the accuracy for validation reachs 0.7 ~ 0.75. 
-v6: The training setting is identical to v5, but the network upgrades to Resnet34 without pretraining. With batchsize 64 and epochs 240, the accuarcy is 0.7924. It is close to the strong baseline: 0.82.   
+v4: involves semi-supervised learning, using the same network structure as v3. However, the accuracies of v3 and v4 are on the same level.
+v5: Since I don't know whether the bottleneck of accuarcy is caused by image augmentation or the network structure, 
+    I adopt the Resnet18 network without pretraining to ensure the network is capable to classify the objects. 
+    It turns out that the implementation of Resnet18 doesn't improve the accuracy a lot. 
+    After that, I try various optimizers (SGD, Adam, AdamW) and schedulers. However, none of them can siginificantly affect the accuracy. 
+    Finally, I try MixUp and CutMix methods (independently). MixUp Method doesn't help, even makes the accuracy worse. 
+    CutMix method is very effective. Using CutMix + AdamW + semi-supervised learning + Cosine scheduler + Resnet18, the accuracy for validation reachs 0.7 ~ 0.75. 
+v6: The training setting is identical to v5, but the network upgrades to Resnet34 without pretraining. 
+    With batchsize 64 and epochs 240, the accuarcy is 0.7924. It is close to the strong baseline: 0.82.  
+v7: pretrained Resnet34 is used. The accuracy for validation set reaches 0.8742, which is much higher than the strong baseline (0.82).
+    Please note that strong baseline is used to assess the performance without pretraining. So, v7 is just a experiment to see how much the pretrained Resnet34 can help.
+    This model with pretrained Resnet34 is designed for handling HW13. 
 
 
 
