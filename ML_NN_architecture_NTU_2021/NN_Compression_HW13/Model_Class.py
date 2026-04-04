@@ -52,28 +52,28 @@ class Classifier_Resnet18(nn.Module):
 
         return x
     
-# Resnet18
+# Resnet34
 class Classifier_Resnet34(nn.Module):
     def __init__(self):
         super().__init__()
         # input image size: [3, 128, 128]
-        self.resnet18_layers = models.resnet34(weights=None)
+        self.resnet34_layers = models.resnet34(weights=None)
         # Get the number of input features for the final layer
-        num_ftrs = self.resnet18_layers.fc.in_features
-        self.resnet18_layers.fc  = nn.Sequential(
+        num_ftrs = self.resnet34_layers.fc.in_features
+        self.resnet34_layers.fc  = nn.Sequential(
             nn.BatchNorm1d(num_ftrs),
             nn.Linear(num_ftrs, 128),
             nn.ReLU(),
             nn.Dropout(0.2),
             nn.Linear(128, 11)
         )
-        # self.resnet18_layers.fc = nn.Linear(num_ftrs, 11)  # replace the classifier head
+        # self.resnet34_layers.fc = nn.Linear(num_ftrs, 11)  # replace the classifier head
     def forward(self, x):
         # input (x): [batch_size, 3, 128, 128]
         # output: [batch_size, 11]
 
         # Extract features by convolutional layers.
-        x = self.resnet18_layers(x)
+        x = self.resnet34_layers(x)
 
         return x
 
