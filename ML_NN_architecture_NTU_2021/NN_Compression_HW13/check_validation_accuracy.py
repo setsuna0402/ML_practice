@@ -14,6 +14,7 @@ from torchinfo import summary
 from tqdm.auto import tqdm
 import time
 from Model_Class import Classifier_Resnet18, Classifier_Resnet34
+from Student_Model_Class import StudentNet, StudentNet_DPGC_Residual, StudentNet_DPGC_Residual_Transformer
 
 allow_device = True  # Set to False if you want to force using CPU.
 use_pin_memory = True  # Set to True if you use GPU. False for CPU and MPS.
@@ -22,7 +23,7 @@ batch_size = 128
 # If you use cuda, you may set it to a greater value like 4 or 8 to accelerate data loading.
 num_workers = 8  # You may change this value based on your system configuration.
 file_path = "./project_data_food_11" # the location of the dataset
-model_path = "./classifier_cnn_v7_batch_128_epoch_160_CutMiX_semi_supervised_AdamW_SGD_Resnet34.pth"
+model_path = "./nn_compression_v2_batch_128_epoch_281_T_4.0_semi_supervised_AdamW_SGD.pth"
 
 
 def evaluate_per_class_accuracy(model, valid_loader, device, n_classes=11, class_names=None):
@@ -141,9 +142,12 @@ else:
     print("Using CPU")
 
 # Load the pretrained classifier
-model = Classifier_Resnet18()
+model = StudentNet_DPGC_Residual()
 checkpoint = torch.load(model_path)
 model.load_state_dict(checkpoint["classifier_network"])
+# load best validation accuracy for reference
+best_valid_acc = checkpoint["best_valid_acc"]
+print("Best validation accuracy from the checkpoint: {:.4f}".format(best_valid_acc))
 model.to(device)
 
 evaluate_per_class_accuracy(model, valid_loader, device)
