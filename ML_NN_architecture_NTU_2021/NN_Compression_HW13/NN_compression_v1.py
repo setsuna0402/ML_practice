@@ -34,18 +34,19 @@ from Model_Class import Classifier_Resnet34, SubsetWithPseudoLabels
 from Transform_func import *
 from Student_Model_Class import StudentNet
 
-run_in_background = False # make tqdm to be silent mode
+run_in_background = True # make tqdm to be silent mode
 show_model_summary = False # Whether to print the model summary. You may set it to False if you don't want to see the model summary.
 allow_device = True  # Set to False if you want to force using CPU.
 use_pin_memory = True  # Set to True if you use GPU. False for CPU and MPS.
-n_epochs = 160 # The number of training epochs for classifier. 
+n_epochs = 300 # The number of training epochs for classifier. 
+n_adamw_epochs = 300 # The number of epochs to use AdamW optimizer. We use AdamW for the first n_adamw_epochs epochs and then switch to SGD for stable convergence. 
 do_semi = True # Whether to do semi-supervised learning.
-n_semi_redo = 5 # Redo pseudo labelling every n_semi_redo epochs
-n_threshold = 40 # Start to do semi-supervise after n_threshold epochs
-do_cutmix = False # Whether to do CutMix augmentation
+# n_semi_redo = 5 # Redo pseudo labelling every n_semi_redo epochs
+# n_threshold = 40 # Start to do semi-supervise after n_threshold epochs
+do_cutmix = True # Whether to do CutMix augmentation
 cutmix_alpha = 1.0 # The alpha for CutMix augmentation. 
 alpha = 0.5 # The weight for the soft loss in knowledge distillation. The weight for the hard loss is (1 - alpha).
-temperature = 4.0 # The temperature for softening the probability distributions in knowledge distillation
+temperature = 10.0 # The temperature for softening the probability distributions in knowledge distillation
 
 # Batch size for training, validation, and testing.
 # A greater batch size usually gives a more stable gradient.
@@ -58,6 +59,20 @@ file_path = "./project_data_food_11" # the location of the dataset
 
 use_pretrain_model = False # Load a pretrained model and use it as the initial condition of the classifier
 teacher_model_path = "./classifier_cnn_v7_batch_128_epoch_160_CutMiX_semi_supervised_AdamW_SGD_Resnet34.pth"
+
+# print the configuration
+print("Configuration:")
+print(f"batch_size: {batch_size}")
+print(f"n_epochs: {n_epochs}")
+print(f"n_adamw_epochs: {n_adamw_epochs}")
+print(f"do_semi: {do_semi}")
+# print(f"n_semi_redo: {n_semi_redo}")
+# print(f"n_threshold: {n_threshold}")
+print(f"do_cutmix: {do_cutmix}")
+print(f"cutmix_alpha: {cutmix_alpha}")
+print(f"alpha: {alpha}")
+print(f"temperature: {temperature}")
+print(f"use_pretrain_model: {use_pretrain_model}")
 
 
 train_tfm = train_transform
@@ -152,7 +167,7 @@ def loss_fn_kd(student_outputs, labels, teacher_outputs, alpha=0.5, temperature=
     soft_loss = 0
     # both outpots are logits and stored in device, so we can directly calculate the soft loss without moving data.
     student_softmax = F.log_softmax(student_outputs / temperature, dim=1)
-    teacher_softmax = F.log_softmax(teacher_outputs / temperature, dim=1)
+    teacher_softmax = F.softmax(teacher_outputs / temperature, dim=1)
     # KD divergence loss
     soft_loss = F.kl_div(student_softmax, teacher_softmax, reduction='batchmean') * (alpha * temperature * temperature)
     return hard_loss + soft_loss
@@ -167,12 +182,18 @@ if allow_device:
         print("Using GPU")
     elif torch.backends.mps.is_available():
         device = torch.device("mps")
+        use_pin_memory = False  # MPS does not support pin_memory
+        num_workers = 0  # MPS does not support multi-process data loading
         print("Using MPS")
     else:
         device = torch.device("cpu")
+        use_pin_memory = False # pin_memory is not useful for CPU
+        num_workers = 0  # CPU does not support multi-process data loading
         print("Using CPU")
 else:
     device = torch.device("cpu")
+    use_pin_memory = False # pin_memory is not useful for CPU
+    num_workers = 0  # CPU does not support multi-process data loading
     print("Using CPU")
 
 
@@ -202,7 +223,11 @@ criterion = nn.CrossEntropyLoss() # it is not used. We define our loss function 
 if do_cutmix:
     cutmix = v2.CutMix(alpha=cutmix_alpha, num_classes=11)
 # Initialize optimizer, you may fine-tune some hyperparameters such as learning rate on your own.
-optimizer = torch.optim.AdamW(student_model.parameters(), lr=0.0003, weight_decay=1e-5)
+optimizer_adamW = torch.optim.AdamW(student_model.parameters(), lr=0.0003, weight_decay=1e-5)
+optimizer_SGD = torch.optim.SGD(student_model.parameters(), lr=0.00003, momentum=0.9, weight_decay=1e-5)
+scheduler_adamW = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer_adamW, T_max=n_adamw_epochs)
+scheduler_SGD = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer_SGD, T_max=n_epochs - n_adamw_epochs)
+
 
 # Record validation accuracy across epochs
 valid_acc_epoch = []
@@ -223,6 +248,12 @@ if do_semi:
 start_time = time.time()
 for epoch in range(n_epochs):
     teacher_model.eval() # Set the teacher model to evaluation mode. We don't need to calculate gradients for the teacher model.
+    if epoch < n_adamw_epochs:
+        optimizer = optimizer_adamW
+        scheduler = scheduler_adamW
+    else:
+        optimizer = optimizer_SGD
+        scheduler = scheduler_SGD
 
     # ---------- Training ----------
     # Make sure the model is in train mode before training.
@@ -285,7 +316,7 @@ for epoch in range(n_epochs):
     # These are used to record information in validation.
     valid_loss = []
     valid_accs = []
-
+    total_samples = 0
     # Iterate the validation set by batches.
     for batch in tqdm(valid_loader, disable=run_in_background):
 
@@ -299,9 +330,10 @@ for epoch in range(n_epochs):
 
         # We can still compute the loss (but not the gradient).
         loss = criterion(logits, labels.to(device))
+        total_samples += labels.size(0)
 
-        # Compute the accuracy for current batch.
-        acc = (logits.argmax(dim=-1) == labels.to(device)).float().mean()
+        # Compute the accuracy for each sample.
+        acc = (logits.argmax(dim=-1) == labels.to(device)).float().sum()
 
         # Record the loss and accuracy.
         valid_loss.append(loss.item())
@@ -312,7 +344,7 @@ for epoch in range(n_epochs):
 
     # The average loss and accuracy for entire validation set is the average of the recorded values.
     valid_loss = sum(valid_loss) / len(valid_loss)
-    valid_acc = sum(valid_accs) / len(valid_accs)
+    valid_acc = sum(valid_accs) / total_samples # overall accuracy for the entire validation set
     valid_acc_epoch.append(valid_acc)
     # Print the information.
     print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}, lr = {current_lr:.8f}")
@@ -324,10 +356,12 @@ for epoch in range(n_epochs):
         model_dict = { 
             "classifier_network" : student_model.state_dict(),
             "classifier_optimizer" : optimizer.state_dict(),
+            "best_valid_acc" : best_valid_acc,
         }   
-        torch.save(model_dict, "nn_compression_v1_batch_{}_epoch_{}_semi_supervised_AdamW.pth".format(batch_size, epoch))
+        torch.save(model_dict, "nn_compression_v1_batch_{}_epoch_{}_T_{}_alpha_{}_CutMix_semi_supervised_AdamW.pth".format(batch_size, epoch, temperature, alpha))
         student_model.to(device)  # Move the model back to the original device after saving.
         student_model.train() # Set the model back to train mode after saving.
+        print("Save the model with best validation accuracy: {:.5f}, epoch: {}".format(best_valid_acc, epoch))
 
 # ---------- Validation ----------
 # Make sure the model is in eval mode so that some modules like dropout are disabled and work normally.
@@ -336,6 +370,7 @@ student_model.eval()
 # These are used to record information in validation.
 valid_loss = []
 valid_accs = []
+total_samples = 0
 
 # Iterate the validation set by batches.
 for batch in tqdm(valid_loader, disable=run_in_background):
@@ -350,17 +385,18 @@ for batch in tqdm(valid_loader, disable=run_in_background):
 
     # We can still compute the loss (but not the gradient).
     loss = criterion(logits, labels.to(device))
+    total_samples += labels.size(0)
 
-    # Compute the accuracy for current batch.
-    acc = (logits.argmax(dim=-1) == labels.to(device)).float().mean()
+    # Compute the accuracy for each sample.
+    acc = (logits.argmax(dim=-1) == labels.to(device)).float().sum()
 
     # Record the loss and accuracy.
     valid_loss.append(loss.item())
-    valid_accs.append(acc)
+    valid_accs.append(acc.item())
 
 # The average loss and accuracy for entire validation set is the average of the recorded values.
 valid_loss = sum(valid_loss) / len(valid_loss)
-valid_acc = sum(valid_accs) / len(valid_accs)
+valid_acc = sum(valid_accs) / total_samples # overall accuracy for the entire validation set
 
 # Print the information.
 # print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
@@ -375,7 +411,7 @@ valid_acc_epoch = np.array(valid_acc_epoch)
 plt.plot(np.arange(n_epochs), valid_acc_epoch, "b-", label="Validation")
 plt.xlabel("Epoch")
 plt.ylabel("Accuracy")
-plt.savefig("nn_compression_v1_accuracy_batch_{}_epoch_{}_semi_supervised_AdamW.png".format(batch_size, n_epochs))
+plt.savefig("nn_compression_v1_accuracy_batch_{}_epoch_{}_T_{}_alpha_{}_CutMix_semi_supervised_AdamW.png".format(batch_size, n_epochs, temperature, alpha))
 plt.close()
 
 
@@ -385,8 +421,9 @@ student_model.to(torch.device("cpu"))  # Move the model to CPU before saving.
 model_dict = { 
             "classifier_network" : student_model.state_dict(),
             "classifier_optimizer" : optimizer.state_dict(),
+            "best_valid_acc" : valid_acc,
         }   
-torch.save(model_dict, "nn_compression_v1_batch_{}_epoch_{}_semi_supervised_AdamW.pth".format(batch_size, n_epochs))
+torch.save(model_dict, "nn_compression_v1_batch_{}_epoch_{}_T_{}_alpha_{}_CutMix_semi_supervised_AdamW.pth".format(batch_size, n_epochs, temperature, alpha))
 print("Model saved.")
 
 
