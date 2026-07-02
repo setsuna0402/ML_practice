@@ -22,3 +22,24 @@ class FCN(nn.Module):
 
     def forward(self, x):
         return self.network(x)
+    
+class FCN_two(nn.Module):
+    def __init__(self, N_hidden=64, dropout_rate=0.1):
+        super().__init__()
+        self.activation = nn.ReLU()
+        self.network = nn.Sequential(
+            nn.Linear(2, N_hidden),
+            nn.Tanh(),
+            nn.Dropout(dropout_rate),
+            nn.Linear(N_hidden, N_hidden),
+            nn.Tanh(),
+            nn.Dropout(dropout_rate),
+            nn.Linear(N_hidden, N_hidden),
+            nn.Tanh(),
+            nn.Dropout(dropout_rate),
+            nn.Linear(N_hidden, 1)
+        )
+        
+
+    def forward(self, x):
+        return self.network(x)
