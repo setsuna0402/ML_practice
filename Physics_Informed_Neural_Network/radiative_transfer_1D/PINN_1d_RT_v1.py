@@ -24,7 +24,7 @@ np.random.seed(random_seed)
 torch.manual_seed(random_seed)
 torch.set_default_dtype(torch.float32)
 
-run_in_background = False # make tqdm to be silent mode
+run_in_background = True # make tqdm to be silent mode
 show_model_summary = False # Whether to print the model summary. You may set it to False if you don't want to see the model summary.
 allow_device = False  # Set to False if you want to force using CPU.
 use_pin_memory = True  # Set to True if you use GPU. False for CPU and MPS.
