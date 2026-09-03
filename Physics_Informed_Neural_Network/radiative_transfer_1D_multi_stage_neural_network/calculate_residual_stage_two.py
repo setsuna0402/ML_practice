@@ -141,12 +141,12 @@ def save_curve_plot(output_dir: Path, x_values: torch.Tensor, reference: torch.T
 
 def parse_args() -> argparse.Namespace:
 	parser = argparse.ArgumentParser(description="Calculate the corrected residual from both PINN stages.")
-	parser.add_argument("-I", "--checkpoint_a", type=Path, default=Path("./pinn_v7_best_model_epoch_960.pth"), 
+	parser.add_argument("-I", "--checkpoint_a", type=Path, default=Path("./pinn_v7_best_model_epoch_4100.pth"), 
 					    help="Path to a .pth checkpoint.")
-	parser.add_argument("-i", "--checkpoint_b", type=Path, default=Path("./multi_stage_v4_best_model_epoch_220.pth"), 
+	parser.add_argument("-i", "--checkpoint_b", type=Path, default=Path("./multi_stage_v4_best_model_epoch_4400.pth"), 
 					    help="Path to a .pth checkpoint.")
 	# parser.add_argument("--checkpoint-dir", type=Path, default=Path("."), help="Directory to search for pinn_v3_best_model_epoch_*.pth when --checkpoint is not provided.")
-	parser.add_argument("-O", "--output-dir", type=Path, default=Path("./trained_result_plots_v4_d"), help="Directory where plots are saved.")
+	parser.add_argument("-O", "--output-dir", type=Path, default=Path("./trained_result_plots_v4_no_scheduler_epoch_5000"), help="Directory where plots are saved.")
 	# parser.add_argument("--show", action="store_true", help="Display the figures interactively after saving them.")
 	return parser.parse_args()
 
@@ -273,7 +273,7 @@ def main() -> None:
 	plt.xlabel("Absolute Residuals")
 	plt.ylabel("Probability Density")
 	plt.title("Histogram of Absolute Residuals")
-	plt.savefig(output_dir / "histogram_absolute_residuals_epoch_960_220.png")
+	plt.savefig(output_dir / "histogram_absolute_residuals_epoch_4100_4400.png")
 
 	# plot one residual curve and the corresponding numerical solution and model prediction
 	# subplot the residuals, numerical solution and model prediction for I_o=0.1, x_c=0.0, freq=0.05
@@ -292,7 +292,7 @@ def main() -> None:
 	axes[1].legend(loc="best")
 	axes[1].grid(True, alpha=0.25)
 
-	fig.savefig(output_dir / "residuals_one_case_epoch_960_220.png", dpi=200)
+	fig.savefig(output_dir / "residuals_one_case_epoch_4100_4400.png", dpi=200)
 	plt.close(fig)
 
 if __name__ == "__main__":

@@ -4,23 +4,24 @@ Here, absorption and emission are considered, but scattering is neglected.
 The values of them follow the analytic functions of the spatial variable x, 
 and the PINN does not see them. The PINN is trained to learn the solution of the RTE.
 
-Version two: In additional to position x, the PINN also takes I_o as an input, 
-so that the PINN can learn the solution of the RTE for different initial conditions.
+Multi-stage Neural Networks: 
+version 7 of the PINN method achieves a good result: the mean absolute error is 2e-5 and  
+the maximum absolute error is 5e-3 for the training data.
+Now, we want to train a network to learn the residual. 
+This is a multi-stage approach, where the first stage is to train a network to learn the solution of the RTE,
+and the second stage is to train a network to learn the residual of the RTE.
 
-Version three: The absorption and emission functions are not fixed. 
-The absorption center x_c and emission frequency are added as conditioning inputs.
+Here, we will use the trained model from the version 7 of the PINN method to generate the training data for the second stage.
 
-Version four: use L-BFGS optimizer instead of Adam optimizer. 
-The default L-BFGS optimizer in PyTorch doesn't mini-batch, 
-so we implement a mini-batch version.
-This version also read the trained model from version three, and continue training with L-BFGS optimizer. 
-The loss term of PDE is also increased.
+Version 1: fit the residual between the numerical solution and the first stage model prediction.
 
-Version five: based on version three, introduced learning rate scheduler
+Version 2: introduce the pde loss term to the training of the second stage model. 
 
-Version six: Set the PDE points identical to the training points, and use the same batch size for both training and PDE loss.
+Version 3: Use fourier feature PINN to predict the residual.  
 
-Version seven: Introduce hard constraint for the initial condition
+Version 4: Use the tiny network with hard constraint to predict the residual.
+           Also, the pde loss term includes the stage one model loss. 
+           An additional loss term, (red_residual - residual) ** 4, is added to the loss function to penalize spike points.
 '''
 
 import numpy as np
@@ -35,7 +36,7 @@ from scipy.interpolate import CubicSpline
 from pathlib import Path
 import argparse
 from analytic_solve import RT_1D_solver
-from NN_classes import FCN_hard_bc_four
+from NN_classes import FCN_hard_bc_four, FCN_tiny_hard_constraint, FCN_tiny_sine_hard_constraint
 
 
 random_seed = 42
@@ -55,7 +56,8 @@ batch_size = 400
 # 0 means only the main process will load data. Greater than 0 means number of subprocesses to use for data loading.
 # If you use cuda, you may set it to a greater value like 4 or 8 to accelerate data loading.
 num_workers = 8  # You may change this value based on your system configuration.
-alpha_phys = 5e-3  # Weight for the physics loss term. 
+alpha_phys = 1e-2  # Weight for the physics loss term. 
+alpha_spike = 1e-1  # Weight for the spike loss term. This is used to penalize the spike points in the residual.
 
 # code_to_physics_length * boxsize = physical length of the problem domain. This is used to scale the spatial variable x to the physical length.
 code_to_physics_length = 10.0 
@@ -68,10 +70,17 @@ n_points_value_loss = 50  # Number of data points for the value loss term
 n_points_I_o = 20  # Number of data points for the initial intensity I_o
 n_points_x_c = 10  # Number of data points for the absorption center x_c
 n_points_frequency = 20  # Number of data points for the emission frequency
+residual_scaling_factor = 500.0  # Scaling factor for the residual. This is used to scale the residual to a reasonable range for training.
+# initial_scaling_factor (kappa) initialise the first layer weights of the second stage network.
+# This is used to scale the input to a reasonable range for training.
+initial_scaling_factor = 15.0  # kappa >= pi * f_d * sqrt(var), where var = 2 / (dim_input + N_hidden)
+omega_first=30.0 # For the first sine layer of the second stage network.
+omega_hidden=1.0 # For the hidden sine layers of the second stage network.
 
-parser = argparse.ArgumentParser(description="Output location.")
-# parser.add_argument("--checkpoint-dir", type=Path, default=Path("."), help="Directory to search for pinn_v3_best_model_epoch_*.pth when --checkpoint is not provided.")
-parser.add_argument("-O", "--output-dir", type=Path, default=Path("./trained_result_plots_v7_epoch_5000"), help="Directory where checkpoints and plots are saved.")
+parser = argparse.ArgumentParser(description="Optput location.")
+parser = argparse.ArgumentParser(description="The irst stage checkpoint and output location.")
+parser.add_argument("-I", "--checkpoint", type=Path, default=("./pinn_v7_best_model_epoch_4100.pth"), help="Path to a .pth checkpoint.")
+parser.add_argument("-O", "--output-dir", type=Path, default=Path("./trained_result_plots_v4_no_scheduler_epoch_5000"), help="Directory where checkpoints and plots are saved.")
 args = parser.parse_args()
 
 def numerical_intensity_cubic_spline(I_o: float | np.float64, kappa: np.ndarray, j_emit: np.ndarray,
@@ -257,8 +266,8 @@ physics_inputs, _ = build_conditioned_dataset(
 )
 '''
 validate_I_o = torch.tensor([[0.25], [0.55], [1.0]], dtype=torch.float32)
-validate_x_c = torch.tensor([[0.03], [0.28], [0.48]], dtype=torch.float32)
-validate_frequencies = torch.linspace(0.08, 1.02, 5).view(-1, 1)
+validate_x_c = torch.tensor([[0.02], [0.27], [0.48]], dtype=torch.float32)
+validate_frequencies = torch.linspace(0.07, 1.03, 5).view(-1, 1)
 x_location_validate = x_location_truth[0:2048:64]  # Position points for validation
 validation_cases = [
     (I_o_value.view(1, 1), x_c_value.view(1, 1), freq_value)
@@ -316,10 +325,22 @@ torch.backends.cudnn.deterministic = True
 train_dataset = torch.utils.data.TensorDataset(train_inputs.reshape(-1, 4), I_training.reshape(-1, 1))
 train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=use_pin_memory)
 
-model = FCN_hard_bc_four(N_hidden=64).to(device)
+#load the trained model from the checkpoint
+checkpoint = Path(args.checkpoint)
+stage_a_model = FCN_hard_bc_four(N_hidden=64)
+state = torch.load(checkpoint, map_location=torch.device('cpu')) # load to cpu first, then move to gpu if available
+stage_a_model.load_state_dict(state)
+stage_a_model.to(device)
+stage_a_model.eval()  # Set the model to evaluation mode
+for parameter in stage_a_model.parameters():
+    parameter.requires_grad_(False)
+
+
+# stage_b_model = FCN_tiny_hard_constraint(N_hidden=64, kappa=initial_scaling_factor).to(device)
+stage_b_model = FCN_tiny_sine_hard_constraint(N_hidden=64, omega_first=omega_first, omega_hidden=omega_hidden).to(device)
 if show_model_summary:
-    print(model)
-    summary(model, input_size=(batch_size, 4))
+    print(stage_b_model)
+    summary(stage_b_model, input_size=(batch_size, 4))
     print("Code execution stopped here. Please set 'show_model_summary' to False to continue.")
     exit()
 
@@ -327,17 +348,17 @@ output_dir = args.output_dir
 output_dir.mkdir(parents=True, exist_ok=True)
 
 criterion = nn.MSELoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+optimizer = torch.optim.Adam(stage_b_model.parameters(), lr=1e-3)
 '''
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
     optimizer, mode='min', factor=0.5, patience=100, threshold_mode='rel', 
     threshold=0.005, min_lr=1e-7)
 '''
 # Cosine Annealing scheduler
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=n_epochs, eta_min=1e-6)
+# scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=n_epochs, eta_min=1e-6)
 best_val_loss = float('inf')  # Initialize best validation loss to infinity
 # Training loop
-model.train()
+stage_b_model.train()
 train_losses = []
 val_losses = []
 val_epochs = []
@@ -346,6 +367,8 @@ best_epoch = 0
 start_time = time.time()
 
 for epoch in tqdm(range(n_epochs), desc="Training", disable=run_in_background):
+    stage_a_model.eval()  # Set the first stage model to evaluation mode
+    stage_b_model.train()  # Set the second stage model to training mode
     epoch_loss = 0.0
     num_sample = 0
     num_batches = len(train_dataloader)
@@ -355,85 +378,115 @@ for epoch in tqdm(range(n_epochs), desc="Training", disable=run_in_background):
         # print("Total batches: ", num_batches, "Current batch: ", count)
         input_batch, I_batch = input_batch.to(device), I_batch.to(device)
         physics_batch = input_batch.detach().clone().requires_grad_(True)
+        I_pred_stage_a = stage_a_model(input_batch)
+        # compute the residual of the RTE using the output of the first stage model
+        residual_stage_a = (I_batch - I_pred_stage_a) * residual_scaling_factor  # Scale the residual to a reasonable range for training.
         optimizer.zero_grad()
         # compute the "data loss"
-        I_pred = model(input_batch)
-        loss_data = criterion(I_pred, I_batch)
-
-        # compute the "pde loss"    
-        alpha = min(1.0, epoch / 1000) * alpha_phys # slowly increase the weight of the physics loss term
-        I_val = model(physics_batch)
-        dx  = torch.autograd.grad(I_val, physics_batch, torch.ones_like(I_val), create_graph=True)[0][:, :1] # computes dI/dx
+        residual_pred = stage_b_model(input_batch)
+        loss_data = criterion(residual_pred, residual_stage_a)
+        # the fourth moment of the residual is used to penalize the spike points in the residual.
+        loss_spike = torch.mean((residual_pred - residual_stage_a) ** 4)
+        
         kappa_val = kappa_func(
-            physics_batch[:, :1].detach().cpu(),
-            physics_batch[:, 2:3].detach().cpu(),
-        ).to(device)
+            physics_batch[:, :1],
+            physics_batch[:, 2:3],
+        )
         j_emit_val = j_emit_func(
-            physics_batch[:, :1].detach().cpu(),
-            physics_batch[:, 3:4].detach().cpu(),
-        ).to(device)
-        pde = dx + kappa_val * I_val - j_emit_val # computes the residual of dI/dx + kappa(x) I - j_emit(x) = 0
-        loss_phys = alpha * torch.mean(pde ** 2)
+            physics_batch[:, :1],
+            physics_batch[:, 3:4],
+        )
 
-        loss = loss_data + loss_phys
+        # pde term for the first stage model
+        I_val = stage_a_model(physics_batch)
+        dx_stage_a  = torch.autograd.grad(I_val, physics_batch, torch.ones_like(I_val), create_graph=True)[0][:, :1] # computes dI/dx
+        pde_stage_a = (dx_stage_a + kappa_val * I_val - j_emit_val)
+
+        # pde loss term for the second stage model
+        residual_pred_physics = stage_b_model(physics_batch)
+        dx_stage_b = torch.autograd.grad(
+            residual_pred_physics,
+            physics_batch,
+            torch.ones_like(residual_pred_physics),
+            create_graph=True,
+        )[0][:, :1]
+
+        pde_stage_b = dx_stage_b + kappa_val * residual_pred_physics
+        pde_total = pde_stage_a + pde_stage_b / residual_scaling_factor
+
+        alpha = min(1.0, epoch / 1000) * alpha_phys # slowly increase the weight of the physics loss term
+        loss_phys = torch.mean(pde_total ** 2)
+
+        loss = loss_data + alpha * loss_phys + alpha_spike * loss_spike
         loss.backward()
         optimizer.step()
         num_sample += input_batch.size(0)
         epoch_loss += loss.item() * input_batch.size(0)  # Accumulate the loss for the epoch
     epoch_loss /= num_sample  # Average loss for the epoch
     # scheduler.step(epoch_loss)  # Update the learning rate scheduler based on the epoch loss
-    scheduler.step()  # Update the learning rate scheduler based on the epoch loss
+    # scheduler.step()  # Update the learning rate scheduler based on the epoch loss
     train_losses.append(epoch_loss)
-    tqdm.write(f"Epoch {epoch+1}/{n_epochs}, Loss: {epoch_loss:.6f}, Learning Rate: {scheduler.optimizer.param_groups[0]['lr']:.6e}")
-    # tqdm.write(f"Epoch {epoch+1}/{n_epochs}, Loss: {epoch_loss:.6f}")
+    # tqdm.write(f"Epoch {epoch+1}/{n_epochs}, Loss: {epoch_loss:.6f}, Learning Rate: {scheduler.optimizer.param_groups[0]['lr']:.6e}")
+    tqdm.write(f"Epoch {epoch+1}/{n_epochs}, Loss: {epoch_loss:.6f}")
     # print(f"Epoch {epoch+1}/{n_epochs}, Loss: {epoch_loss:.6f}")
 
     # validation every 200 epochs, also make plot
     if (epoch + 1) % 20 == 0:
-        model.eval()
+        stage_b_model.eval()
         with torch.no_grad():
             val_loss_sum = 0.0
             validation_curves = []
             for (I_o_value, x_c_value, freq_value), validate_inputs, I_validate in zip(validation_cases, validate_inputs_list, I_validate_list):
                 validate_inputs_device = validate_inputs.to(device)
                 I_validate_device = I_validate.to(device)
-                I_pred_validate = model(validate_inputs_device)
-                freq_loss = criterion(I_pred_validate, I_validate_device).item()
+                I_pred_validate = stage_a_model(validate_inputs_device)
+                residual_pred_validate = stage_b_model(validate_inputs_device)
+                residual_stage_a_validate = (I_validate_device - I_pred_validate) * residual_scaling_factor
+                # compute loss for the validation set
+                freq_loss = criterion(residual_pred_validate, residual_stage_a_validate).item()
                 val_loss_sum += freq_loss
-                validation_curves.append((I_o_value, x_c_value, freq_value, I_validate, I_pred_validate.cpu()))
+                validation_curves.append((I_o_value, x_c_value, freq_value, residual_stage_a_validate.cpu(), residual_pred_validate.cpu()))
 
             val_loss = val_loss_sum / len(validate_inputs_list)
 
             val_losses.append(val_loss)
             val_epochs.append(epoch + 1)
-            if (val_loss < best_val_loss and epoch > 100):  # Save the model if it has the best validation loss or every 100 epochs
+            if (val_loss < best_val_loss and epoch > 50):  # Save the model if it has the best validation loss or every 100 epochs
                 best_val_loss = val_loss
+                save_dict = {
+                    'model_state_dict': stage_b_model.state_dict(),
+                    'residual_scaling_factor': residual_scaling_factor,
+                    'stage': 2,          # indicate the stage of the model
+                    'epoch': epoch + 1,  # epoch
+                    'omega_first': omega_first,
+                    'omega_hidden': omega_hidden
+                }
                 print(f"New best model found at epoch {epoch+1} with validation loss {val_loss:.6f}. Saving the model.")
                 # save the best model
-                torch.save(model.state_dict(), output_dir / f'pinn_v7_best_model_epoch_{epoch+1}.pth')
+                torch.save(save_dict, output_dir / f'multi_stage_v4_best_model_epoch_{epoch+1}.pth')
                 best_epoch = epoch + 1
             if (epoch + 1) % 100 == 0:
+                save_dict = {
+                    'model_state_dict': stage_b_model.state_dict(),
+                    'residual_scaling_factor': residual_scaling_factor,
+                    'stage': 2,          # indicate the stage of the model
+                    'epoch': epoch + 1,  # epoch
+                    'omega_first': omega_first,
+                    'omega_hidden': omega_hidden
+                }
                 # save the model every 100 epochs
-                torch.save(model.state_dict(), output_dir / f'pinn_v7_model_epoch_{epoch+1}.pth')
+                torch.save(save_dict, output_dir / f'multi_stage_v4_model_epoch_{epoch+1}.pth')
                 print(f"Model saved at epoch {epoch+1} with epoch loss {epoch_loss:.6f}.")
-            
-            # I_numerical = reference_intensity_from_conditions(x_location_truth, validate_I_o, validate_x_c, validate_frequencies[0]).view(-1, 1)
-            # plot_truth_inputs = build_condition_inputs(x_location_truth, validate_I_o, validate_x_c, validate_frequencies[0])
-            # I_model = model(plot_truth_inputs.to(device)).cpu()  # Model prediction for the numerical position points
-            # plot_train_inputs = build_condition_inputs(x_location_training, validate_I_o, validate_x_c, validate_frequencies[0])
-            # I_training_pred = model(plot_train_inputs.to(device)).cpu()  # Model prediction for the training position points
 
         print(f"Epoch {epoch+1}, Validation Loss: {val_loss:.6f}")
         plot_cases = validation_curves[: len(validate_I_o) * len(validate_x_c)]
-        plot_truth_cases = I_validate_numerical_list[: len(plot_cases)]
         fig, axes = plt.subplots(len(plot_cases), 1, figsize=(10, 3.5 * len(plot_cases)), sharex=True)
         axes = np.atleast_1d(axes)
-        for axis, (I_o_value, x_c_value, freq_value, I_numerical_freq, I_model_freq), I_validate_numerical in zip(axes, plot_cases, plot_truth_cases):
-            axis.plot(x_location_truth.cpu(), I_validate_numerical.cpu(), '-b', label='Numerical Solution')
-            axis.plot(x_location_validate.cpu(), I_model_freq, '--or', label='Model Prediction')
-            # axis.plot(x_location_training.cpu(), I_training_pred.cpu(), 'go', label='Training Data')
+        for axis, (I_o_value, x_c_value, freq_value, residual_truth, residual_model) in zip(axes, plot_cases):
+            axis.plot(x_location_validate.cpu(), residual_truth, '-b', label='Stage a Residual')
+            axis.plot(x_location_validate.cpu(), residual_model, '--or', label='Residual Prediction')
             axis.set_xlim(0, Boxsize_data)
-            axis.set_ylabel('Intensity')
+            axis.set_ylabel('Residual')
             axis.set_title(
                 f'I_o = {_to_scalar(I_o_value):.2f}, x_c = {_to_scalar(x_c_value):.2f}, '
                 f'Frequency = {_to_scalar(freq_value + 0.45):.2f}'
@@ -441,10 +494,10 @@ for epoch in tqdm(range(n_epochs), desc="Training", disable=run_in_background):
             axis.grid(True, alpha=0.25)
         axes[-1].set_xlabel('Path')
         axes[0].legend(loc='best')
-        fig.suptitle(f'Epoch {epoch+1} | validation condition sweep')
+        fig.suptitle(f'Epoch {epoch+1} | validation residual sweep')
         fig.tight_layout(rect=[0, 0, 1, 0.98])
-        fig.savefig(output_dir / f'pinn_v7_epoch_{epoch+1}.png')
+        fig.savefig(output_dir / f'multi_stage_v4_residual_epoch_{epoch+1}.png')
         plt.close(fig)
-        model.train()
+        stage_b_model.train()
 endtime = time.time()
 print(f"Training completed in {endtime - start_time:.2f} seconds.")

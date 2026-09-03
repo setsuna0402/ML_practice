@@ -138,7 +138,7 @@ def parse_args() -> argparse.Namespace:
 	parser = argparse.ArgumentParser(description="Load a trained PINN v3 checkpoint and create visualization plots.")
 	parser.add_argument("-I", "--checkpoint", type=Path, default=None, help="Path to a .pth checkpoint. If omitted, the latest pinn_v3_best_model_epoch_*.pth in --output-dir is used.")
 	# parser.add_argument("--checkpoint-dir", type=Path, default=Path("."), help="Directory to search for pinn_v3_best_model_epoch_*.pth when --checkpoint is not provided.")
-	parser.add_argument("-O", "--output-dir", type=Path, default=Path("trained_result_plots_v7_a"), help="Directory where plots are saved.")
+	parser.add_argument("-O", "--output-dir", type=Path, default=Path("trained_result_plots_v7_epoch_5000"), help="Directory where plots are saved.")
 	# parser.add_argument("--show", action="store_true", help="Display the figures interactively after saving them.")
 	return parser.parse_args()
 

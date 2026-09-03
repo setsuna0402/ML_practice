@@ -142,10 +142,10 @@ def save_curve_plot(output_dir: Path, x_values: torch.Tensor, reference: torch.T
 
 def parse_args() -> argparse.Namespace:
 	parser = argparse.ArgumentParser(description="Load a trained PINN v3 checkpoint and create visualization plots.")
-	parser.add_argument("-I", "--checkpoint", type=Path, default=("./pinn_v7_best_model_epoch_960.pth"), 
+	parser.add_argument("-I", "--checkpoint", type=Path, default=("./pinn_v7_best_model_epoch_1760.pth"), 
 					    help="Path to a .pth checkpoint.")
 	# parser.add_argument("--checkpoint-dir", type=Path, default=Path("."), help="Directory to search for pinn_v3_best_model_epoch_*.pth when --checkpoint is not provided.")
-	parser.add_argument("-O", "--output-dir", type=Path, default=Path("trained_result_plots_v7_d"), help="Directory where plots are saved.")
+	parser.add_argument("-O", "--output-dir", type=Path, default=Path("trained_result_plots_v7_epoch_5000"), help="Directory where plots are saved.")
 	# parser.add_argument("--show", action="store_true", help="Display the figures interactively after saving them.")
 	return parser.parse_args()
 
@@ -264,7 +264,7 @@ def main() -> None:
 	plt.xlabel("Absolute Residuals")
 	plt.ylabel("Probability Density")
 	plt.title("Histogram of Absolute Residuals")
-	plt.savefig(output_dir / "histogram_absolute_residuals_epoch_1340.png")
+	plt.savefig(output_dir / "histogram_absolute_residuals_epoch_4000.png")
 
 	# plot one residual curve and the corresponding numerical solution and model prediction
 	# subplot the residuals, numerical solution and model prediction for I_o=0.1, x_c=0.0, freq=0.05
@@ -283,7 +283,7 @@ def main() -> None:
 	axes[1].legend(loc="best")
 	axes[1].grid(True, alpha=0.25)
 
-	fig.savefig(output_dir / "residuals_one_case_epoch_1340.png", dpi=200)
+	fig.savefig(output_dir / "residuals_one_case_epoch_4000.png", dpi=200)
 	plt.close(fig)
 
 if __name__ == "__main__":
