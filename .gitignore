@@ -12,6 +12,7 @@ project_data*
 *.pyc
 *.hdf5
 *.npy
+*.npz
 *.exe
 .vscode
 *.o
