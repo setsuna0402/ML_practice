@@ -5,6 +5,7 @@ syntax: glob
 trained_result*
 project_data*
 *.pth
+*.pt
 *.png
 *.jpg
 *.optrpt
